@@ -1,0 +1,26 @@
+[35m[1mConsolidate compiler generated dependencies of target move_to_position[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/move_to_position.dir/src/move_to_position.cpp.o[0m
+[01m[K/home/b/ws_moveit2/src/ur3e_motion_cpp/src/move_to_position.cpp:[m[K In function ‘[01m[Kint main(int, char**)[m[K’:
+[01m[K/home/b/ws_moveit2/src/ur3e_motion_cpp/src/move_to_position.cpp:132:8:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Ksuccess[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+  132 |   bool [01;35m[Ksuccess[m[K = moveToPose(move_group, 0.3, 0.2, 0.4, 0.0, M_PI/2.0, 0.0);
+      |        [01;35m[K^~~~~~~[m[K
+[100%] [32m[1mLinking CXX executable move_to_position[0m
+[100%] Built target move_to_position
+-- Install configuration: ""
+-- Installing: /home/b/ws_moveit2/install/ur3e_motion_cpp/lib/ur3e_motion_cpp/move_to_position
+-- Set runtime path of "/home/b/ws_moveit2/install/ur3e_motion_cpp/lib/ur3e_motion_cpp/move_to_position" to ""
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ament_index/resource_index/package_run_dependencies/ur3e_motion_cpp
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ament_index/resource_index/parent_prefix_path/ur3e_motion_cpp
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/environment/ament_prefix_path.sh
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/environment/path.sh
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/environment/path.dsv
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/local_setup.bash
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/local_setup.sh
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/local_setup.zsh
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/local_setup.dsv
+-- Installing: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/package.dsv
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ament_index/resource_index/packages/ur3e_motion_cpp
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/cmake/ur3e_motion_cppConfig.cmake
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/cmake/ur3e_motion_cppConfig-version.cmake
+-- Up-to-date: /home/b/ws_moveit2/install/ur3e_motion_cpp/share/ur3e_motion_cpp/package.xml

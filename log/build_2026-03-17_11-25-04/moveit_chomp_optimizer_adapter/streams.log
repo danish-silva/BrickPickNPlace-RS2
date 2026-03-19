@@ -1,0 +1,78 @@
+[0.438s] Invoking command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/b/ws_moveit2/src/moveit2/moveit_planners/chomp/chomp_optimizer_adapter -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter
+[0.606s] -- The C compiler identification is GNU 11.4.0
+[1.096s] -- The CXX compiler identification is GNU 11.4.0
+[1.514s] -- Detecting C compiler ABI info
+[1.747s] -- Detecting C compiler ABI info - done
+[1.761s] -- Check for working C compiler: /usr/bin/cc - skipped
+[1.762s] -- Detecting C compile features
+[1.763s] -- Detecting C compile features - done
+[1.775s] -- Detecting CXX compiler ABI info
+[2.053s] -- Detecting CXX compiler ABI info - done
+[2.059s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2.059s] -- Detecting CXX compile features
+[2.059s] -- Detecting CXX compile features - done
+[2.061s] -- Found moveit_common: 2.5.9 (/home/b/ws_moveit2/install/moveit_common/share/moveit_common/cmake)
+[2.064s] -- Found ament_cmake: 1.3.13 (/opt/ros/humble/share/ament_cmake/cmake)
+[2.360s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[2.631s] -- Found chomp_motion_planner: 2.5.9 (/home/b/ws_moveit2/install/chomp_motion_planner/share/chomp_motion_planner/cmake)
+[2.633s] -- Found moveit_core: 2.5.9 (/home/b/ws_moveit2/install/moveit_core/share/moveit_core/cmake)
+[3.280s] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0") found components: chrono date_time filesystem iostreams program_options regex serialization system thread 
+[4.596s] -- Found parameter_traits: 0.6.0 (/opt/ros/humble/share/parameter_traits/cmake)
+[4.727s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[4.737s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[4.752s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[4.777s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[4.803s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[4.876s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[4.882s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[6.120s] -- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[7.517s] -- Found FastRTPS: /opt/ros/humble/include  
+[10.678s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[10.686s] -- Found Threads: TRUE  
+[10.752s] -- Found rclcpp_lifecycle: 16.0.18 (/opt/ros/humble/share/rclcpp_lifecycle/cmake)
+[10.794s] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0") found components: filesystem 
+[12.617s] -- library: /usr/lib/x86_64-linux-gnu/libcurl.so
+[12.728s] -- Found Eigen3: TRUE (found version "3.4.0") 
+[12.728s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[14.552s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[14.566s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[14.566s] -- Configured cppcheck include dirs: 
+[14.566s] -- Configured cppcheck exclude dirs and/or files: 
+[14.568s] -- Added test 'xmllint' to check XML markup files
+[14.571s] -- Configuring done
+[14.601s] -- Generating done
+[14.607s] -- Build files have been written to: /home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter
+[14.624s] Invoked command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter' returned '0': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/b/ws_moveit2/src/moveit2/moveit_planners/chomp/chomp_optimizer_adapter -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter
+[14.625s] Invoking command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter -- -j12 -l12
+[14.684s] [ 50%] [32mBuilding CXX object CMakeFiles/moveit_chomp_optimizer_adapter.dir/src/chomp_optimizer_adapter.cpp.o[0m
+[44.023s] [100%] [32m[1mLinking CXX shared library libmoveit_chomp_optimizer_adapter.so[0m
+[45.532s] [100%] Built target moveit_chomp_optimizer_adapter
+[45.587s] Invoked command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter' returned '0': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter -- -j12 -l12
+[45.589s] Invoking command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter
+[45.619s] -- Install configuration: "Release"
+[45.619s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/lib/libmoveit_chomp_optimizer_adapter.so.2.5.9
+[45.620s] -- Set runtime path of "/home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/lib/libmoveit_chomp_optimizer_adapter.so.2.5.9" to ""
+[45.621s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/lib/libmoveit_chomp_optimizer_adapter.so
+[45.622s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/library_path.sh
+[45.623s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/library_path.dsv
+[45.623s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/chomp_optimizer_adapter_plugin_description.xml
+[45.625s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/ament_index/resource_index/package_run_dependencies/moveit_chomp_optimizer_adapter
+[45.625s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/ament_index/resource_index/parent_prefix_path/moveit_chomp_optimizer_adapter
+[45.630s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/ament_prefix_path.sh
+[45.631s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/ament_prefix_path.dsv
+[45.631s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/path.sh
+[45.631s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/environment/path.dsv
+[45.631s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/local_setup.bash
+[45.631s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/local_setup.sh
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/local_setup.zsh
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/local_setup.dsv
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/package.dsv
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/ament_index/resource_index/packages/moveit_chomp_optimizer_adapter
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/ament_index/resource_index/moveit_core__pluginlib__plugin/moveit_chomp_optimizer_adapter
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/cmake/moveit_chomp_optimizer_adapterTargetsExport.cmake
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/cmake/moveit_chomp_optimizer_adapterTargetsExport-release.cmake
+[45.632s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/cmake/ament_cmake_export_targets-extras.cmake
+[45.633s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/cmake/moveit_chomp_optimizer_adapterConfig.cmake
+[45.633s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/cmake/moveit_chomp_optimizer_adapterConfig-version.cmake
+[45.633s] -- Installing: /home/b/ws_moveit2/install/moveit_chomp_optimizer_adapter/share/moveit_chomp_optimizer_adapter/package.xml
+[45.637s] Invoked command in '/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter' returned '0': AMENT_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/b/ws_moveit2/install/chomp_motion_planner:/home/b/ws_moveit2/install/moveit_core:/home/b/ws_moveit2/install/moveit_resources_panda_moveit_config:/home/b/ws_moveit2/install/srdfdom:/home/b/ws_moveit2/install/moveit_resources_pr2_description:/home/b/ws_moveit2/install/moveit_resources_panda_description:/home/b/ws_moveit2/install/moveit_common:/opt/ros/humble LD_LIBRARY_PATH=/home/b/ws_moveit2/install/chomp_motion_planner/lib:/home/b/ws_moveit2/install/moveit_core/lib:/home/b/ws_moveit2/install/srdfdom/lib:${LD_LIBRARY_PATH} PATH=/home/b/ws_moveit2/install/moveit_core/bin:${PATH} PYTHONPATH=/home/b/ws_moveit2/install/srdfdom/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter

@@ -1,0 +1,13 @@
+[0mMissing content of submodule pybind11: Use 'git clone --recurse-submodule' in future.
+Checking out content automatically[0m
+Submodule 'core/python/pybind11' (https://github.com/pybind/pybind11) registered for path 'pybind11'
+Submodule 'core/src/scope_guard' (https://github.com/ricab/scope_guard) registered for path '../src/scope_guard'
+Cloning into '/home/b/ws_moveit2/src/moveit_task_constructor/core/python/pybind11'...
+Cloning into '/home/b/ws_moveit2/src/moveit_task_constructor/core/src/scope_guard'...
+From https://github.com/pybind/pybind11
+ * branch              f4bc71f981d4eb2dd780215fd3c5a7420f1f03aa -> FETCH_HEAD
+[01m[Kc++:[m[K [01;31m[Kfatal error: [m[KKilled signal terminated program cc1plus
+compilation terminated.
+gmake[2]: *** [python/bindings/CMakeFiles/pymoveit_mtc.dir/build.make:104: python/bindings/CMakeFiles/pymoveit_mtc.dir/src/core.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:442: python/bindings/CMakeFiles/pymoveit_mtc.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2
