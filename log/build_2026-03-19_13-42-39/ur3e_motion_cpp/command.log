@@ -1,0 +1,2 @@
+Invoking command in '/home/danish/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/danish/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp -- -j4 -l4
+Invoked command in '/home/danish/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp' returned '2': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/danish/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp -- -j4 -l4
