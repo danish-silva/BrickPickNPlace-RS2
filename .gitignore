@@ -1,4 +1,33 @@
+# Colcon build artifacts
 build/
 install/
 log/
+
+# Python
+*.pyc
+__pycache__/
+*.egg-info/
+
+# MoveIt2 & external dependencies (install via apt or vcs import)
+src/moveit2/
+src/moveit2_tutorials/
+src/moveit_resources/
+src/moveit_task_constructor/
+src/moveit_visual_tools/
+src/rosparam_shortcuts/
+src/srdfdom/
+src/launch_param_builder/
+
+# Nested build artifacts
+src/build/
+src/install/
+src/log/
+
+# Misc
+192.168.0.*
 *.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
