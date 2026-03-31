@@ -1,3 +1,0 @@
-[console_scripts]
-move_to_position = ur3e_motion.move_to_position:main
-

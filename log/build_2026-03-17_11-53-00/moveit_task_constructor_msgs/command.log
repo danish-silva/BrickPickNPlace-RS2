@@ -1,4 +1,0 @@
-Invoking command in '/home/b/ws_moveit2/build/moveit_task_constructor_msgs': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/b/ws_moveit2/build/moveit_task_constructor_msgs -- -j12 -l12
-Invoked command in '/home/b/ws_moveit2/build/moveit_task_constructor_msgs' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/b/ws_moveit2/build/moveit_task_constructor_msgs -- -j12 -l12
-Invoking command in '/home/b/ws_moveit2/build/moveit_task_constructor_msgs': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/b/ws_moveit2/build/moveit_task_constructor_msgs
-Invoked command in '/home/b/ws_moveit2/build/moveit_task_constructor_msgs' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/b/ws_moveit2/build/moveit_task_constructor_msgs
