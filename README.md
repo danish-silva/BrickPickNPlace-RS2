@@ -37,7 +37,7 @@ The system uses an overhead **Intel RealSense D435i** depth camera to detect LEG
 | Perception & Mapping | `brick_vision` | Danish Silva | Brick detection, colour/size classification, and 3D pose estimation via RealSense + OpenCV |
 | Motion Planning & Control | `ur3e_motion` / `ur3e_motion_cpp` | Benjamin Costarella | Inverse kinematics, trajectory planning, singularity & obstacle avoidance using MoveIt2 |
 | Interaction & Execution | `brick_interaction` | Hari Mahadevan | Task sequencing, state management, GUI coordination, and error recovery |
-| Voice Interface | ESP32 + ROS Bridge | Dheeraj Panjwani | Voice commands via ESP32 microphone for system control and task selection |
+| Voice Interface | Task Level Control via Voice Interface| Dheeraj Panjwani | Voice commands via microphone for system control and task selection |
 
 ---
 
