@@ -14,16 +14,20 @@ Topics:
 
 Qt Designer layout file: brick_gui/ui/main_window.ui
   Required widget objectNames:
-    startButton  (QPushButton)
-    pauseButton  (QPushButton)
-    stopButton   (QPushButton)
-    statusLabel  (QLabel)
+    startButton      (QPushButton)
+    pauseButton      (QPushButton)
+    stopButton       (QPushButton)
+    statusLabel      (QLabel)       — state badge
+    lastUpdateLabel  (QLabel)       — last update time
+    currentTaskLabel (QLabel)       — human-readable task
+    logTextEdit      (QTextEdit)    — execution log
   You can redesign the layout freely in Qt Designer — just keep those names.
 """
 
 import os
 import sys
 import threading
+from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
@@ -85,6 +89,24 @@ class _SignalBridge(QObject):
     status_received = pyqtSignal(str)
 
 
+# Colour scheme for each system state
+_STATE_STYLES = {
+    'idle':      ('color: #666666;', 'background: #ebebeb;'),
+    'running':   ('color: white;',   'background: #5cb85c;'),
+    'paused':    ('color: white;',   'background: #f0ad4e;'),
+    'completed': ('color: white;',   'background: #5bc0de;'),
+    'error':     ('color: white;',   'background: #d9534f;'),
+}
+
+_TASK_NAMES = {
+    'idle':      'Waiting',
+    'running':   'Pick and Place',
+    'paused':    'Paused',
+    'completed': 'Done',
+    'error':     'Error — check terminal',
+}
+
+
 class MainWindow(QMainWindow):
     """
     Loads the Qt Designer .ui file and wires buttons to the ROS node.
@@ -98,11 +120,10 @@ class MainWindow(QMainWindow):
     def __init__(self, ros_node: BrickGuiNode) -> None:
         super().__init__()
 
-        # Load the Qt Designer layout
+        # Load the Qt Designer layout — populates self.<widgetName> for every
+        # named widget in the .ui file
         ui_path = os.path.join(os.path.dirname(__file__), 'ui', 'main_window.ui')
         uic.loadUi(ui_path, self)
-        # After loadUi, self.startButton, self.pauseButton, self.stopButton,
-        # and self.statusLabel are all available as attributes.
 
         # Wire buttons -> ROS commands
         self.startButton.clicked.connect(lambda: ros_node.send_command('start'))
@@ -116,11 +137,41 @@ class MainWindow(QMainWindow):
         # Give the ROS node a way to trigger the signal from its spin thread
         ros_node.on_status_update = self._bridge.status_received.emit
 
-        self.setWindowTitle("LeBrick n' Place")
+        # Initial log entry and status bar
+        self._append_log('System ready. Waiting for start command.')
+        self.statusBar.showMessage(
+            'ROS 2 Node: brick_gui  |  /brick_command  /system_status'
+        )
 
     def _update_status(self, status: str) -> None:
-        """Update the status label. Always called on the Qt main thread."""
-        self.statusLabel.setText(f'Status: {status}')
+        """
+        Update all status widgets from a /system_status message.
+        Always called on the Qt main thread via the signal bridge.
+        """
+        key = status.lower()
+        text_style, bg_style = _STATE_STYLES.get(key, ('color: #666;', 'background: #ebebeb;'))
+
+        # State badge
+        self.statusLabel.setText(f'\u25cf  {status.upper()}')
+        self.statusLabel.setStyleSheet(
+            f'font-size: 13px; font-weight: bold; {text_style} {bg_style} '
+            f'padding: 6px; border-radius: 6px;'
+        )
+
+        # Info labels
+        now = datetime.now().strftime('%H:%M:%S')
+        self.lastUpdateLabel.setText(f'Last Update:    {now}')
+        self.currentTaskLabel.setText(
+            f'Current Task:    {_TASK_NAMES.get(key, status)}'
+        )
+
+        # Log entry
+        self._append_log(f'Status \u2192 {status.upper()}')
+
+    def _append_log(self, message: str) -> None:
+        """Append a timestamped line to the execution log. Main thread only."""
+        now = datetime.now().strftime('%H:%M:%S')
+        self.logTextEdit.append(f'[{now}]  {message}')
 
 
 # ------------------------------------------------------------------ #

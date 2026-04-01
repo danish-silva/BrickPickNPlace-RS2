@@ -1,69 +1,200 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Placeholder Qt Designer file.
-  Open this in Qt Designer and replace with your own layout.
+  Main window layout — LeBrick n' Place Execution Controller.
 
   Required widget objectNames (gui_node.py references these by name):
-    - startButton  (QPushButton)
-    - pauseButton  (QPushButton)
-    - stopButton   (QPushButton)
-    - statusLabel  (QLabel)
-
-  You can add any other widgets you like — just keep those four names.
+    startButton      QPushButton  — publishes 'start' to /brick_command
+    pauseButton      QPushButton  — publishes 'pause' to /brick_command
+    stopButton       QPushButton  — publishes 'stop'  to /brick_command
+    statusLabel      QLabel       — state badge (idle/running/paused/...)
+    lastUpdateLabel  QLabel       — time of last status update
+    currentTaskLabel QLabel       — human-readable current task
+    logTextEdit      QTextEdit    — scrollable execution log
 -->
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>400</width>
-    <height>180</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>820</width><height>520</height></rect>
   </property>
   <property name="windowTitle">
-   <string>LeBrick n' Place</string>
+   <string>LeBrick n' Place — Execution Controller</string>
   </property>
+
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QHBoxLayout" name="mainLayout">
+    <property name="spacing"><number>12</number></property>
+    <property name="leftMargin"><number>12</number></property>
+    <property name="topMargin"><number>12</number></property>
+    <property name="rightMargin"><number>12</number></property>
+    <property name="bottomMargin"><number>8</number></property>
+
+    <!-- ==================== LEFT PANEL ==================== -->
     <item>
-     <widget class="QLabel" name="statusLabel">
-      <property name="text">
-       <string>Status: idle</string>
-      </property>
-      <property name="alignment">
-       <set>Qt::AlignCenter</set>
-      </property>
+     <widget class="QWidget" name="leftPanel">
+      <property name="minimumWidth"><number>220</number></property>
+      <property name="maximumWidth"><number>270</number></property>
+      <layout class="QVBoxLayout" name="leftLayout">
+       <property name="spacing"><number>8</number></property>
+
+       <!-- Control section header -->
+       <item>
+        <widget class="QLabel" name="controlHeaderLabel">
+         <property name="text"><string>Control</string></property>
+         <property name="styleSheet">
+          <string>font-size: 14px; font-weight: bold;</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Start button -->
+       <item>
+        <widget class="QPushButton" name="startButton">
+         <property name="text"><string>&#9654;  Start</string></property>
+         <property name="minimumHeight"><number>52</number></property>
+         <property name="styleSheet">
+          <string>QPushButton {
+  background-color: #5cb85c; color: white;
+  font-size: 13px; font-weight: bold;
+  padding: 8px; border-radius: 6px; border: none;
+}
+QPushButton:hover    { background-color: #4cae4c; }
+QPushButton:pressed  { background-color: #3d8b3d; }</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Pause button -->
+       <item>
+        <widget class="QPushButton" name="pauseButton">
+         <property name="text"><string>&#9646;&#9646;  Pause</string></property>
+         <property name="minimumHeight"><number>52</number></property>
+         <property name="styleSheet">
+          <string>QPushButton {
+  background-color: #f0ad4e; color: white;
+  font-size: 13px; font-weight: bold;
+  padding: 8px; border-radius: 6px; border: none;
+}
+QPushButton:hover    { background-color: #ec971f; }
+QPushButton:pressed  { background-color: #d58512; }</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Stop button -->
+       <item>
+        <widget class="QPushButton" name="stopButton">
+         <property name="text"><string>&#9632;  Stop</string></property>
+         <property name="minimumHeight"><number>52</number></property>
+         <property name="styleSheet">
+          <string>QPushButton {
+  background-color: #d9534f; color: white;
+  font-size: 13px; font-weight: bold;
+  padding: 8px; border-radius: 6px; border: none;
+}
+QPushButton:hover    { background-color: #c9302c; }
+QPushButton:pressed  { background-color: #ac2925; }</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Divider -->
+       <item>
+        <widget class="QFrame" name="separator">
+         <property name="frameShape"><enum>QFrame::HLine</enum></property>
+         <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        </widget>
+       </item>
+
+       <!-- System Status section header -->
+       <item>
+        <widget class="QLabel" name="statusHeaderLabel">
+         <property name="text"><string>System Status</string></property>
+         <property name="styleSheet">
+          <string>font-size: 14px; font-weight: bold;</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- State badge -->
+       <item>
+        <widget class="QLabel" name="statusLabel">
+         <property name="text"><string>&#9679;  IDLE</string></property>
+         <property name="alignment"><set>Qt::AlignCenter</set></property>
+         <property name="minimumHeight"><number>36</number></property>
+         <property name="styleSheet">
+          <string>font-size: 13px; font-weight: bold;
+color: #888; background: #ebebeb;
+padding: 6px; border-radius: 6px;</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Last update time -->
+       <item>
+        <widget class="QLabel" name="lastUpdateLabel">
+         <property name="text"><string>Last Update:    —</string></property>
+         <property name="styleSheet">
+          <string>color: #555; font-size: 11px; padding-top: 4px;</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Current task -->
+       <item>
+        <widget class="QLabel" name="currentTaskLabel">
+         <property name="text"><string>Current Task:    Waiting</string></property>
+         <property name="styleSheet">
+          <string>color: #555; font-size: 11px;</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Push widgets to top -->
+       <item>
+        <spacer name="leftSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0">
+          <size><width>20</width><height>40</height></size>
+         </property>
+        </spacer>
+       </item>
+
+      </layout>
      </widget>
     </item>
+
+    <!-- ==================== RIGHT PANEL ==================== -->
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout">
-      <item>
-       <widget class="QPushButton" name="startButton">
-        <property name="text">
-         <string>Start</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="pauseButton">
-        <property name="text">
-         <string>Pause</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="stopButton">
-        <property name="text">
-         <string>Stop</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <widget class="QGroupBox" name="feedbackGroup">
+      <property name="title"><string>Execution Feedback</string></property>
+      <property name="styleSheet">
+       <string>QGroupBox { font-size: 13px; font-weight: bold; }</string>
+      </property>
+      <layout class="QVBoxLayout" name="feedbackLayout">
+       <item>
+        <widget class="QTextEdit" name="logTextEdit">
+         <property name="readOnly"><bool>true</bool></property>
+         <property name="styleSheet">
+          <string>font-family: monospace; font-size: 11px;
+background: #fafafa; border: 1px solid #ddd; border-radius: 4px;</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </item>
+
    </layout>
   </widget>
+
+  <!-- Status bar -->
+  <widget class="QStatusBar" name="statusBar">
+   <property name="styleSheet">
+    <string>font-size: 11px; color: #555;</string>
+   </property>
+  </widget>
+
  </widget>
  <resources/>
  <connections/>
