@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_ros_move_group/ament_cmake_environment_hooks/local_setup.sh

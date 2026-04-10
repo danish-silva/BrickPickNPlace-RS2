@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_planners_ompl/ament_cmake_environment_hooks/local_setup.bash

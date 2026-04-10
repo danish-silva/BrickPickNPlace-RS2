@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_py/ament_cmake_environment_hooks/pythonpath.sh

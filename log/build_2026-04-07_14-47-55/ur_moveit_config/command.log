@@ -1,0 +1,2 @@
+Invoking command in '/home/b/ws_moveit2/build/ur_moveit_config': /usr/bin/cmake /home/b/ws_moveit2/src/ur_moveit_config -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/install/ur_moveit_config
+Invoked command in '/home/b/ws_moveit2/build/ur_moveit_config' returned '1': /usr/bin/cmake /home/b/ws_moveit2/src/ur_moveit_config -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/install/ur_moveit_config

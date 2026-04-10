@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_task_constructor_capabilities/ament_cmake_core/moveit_task_constructor_capabilitiesConfig.cmake

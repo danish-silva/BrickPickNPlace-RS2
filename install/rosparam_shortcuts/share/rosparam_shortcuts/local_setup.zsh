@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/rosparam_shortcuts/ament_cmake_environment_hooks/local_setup.zsh

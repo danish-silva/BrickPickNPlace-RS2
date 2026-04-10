@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/moveit2/moveit_planners/chomp/chomp_motion_planner/include/chomp_motion_planner/chomp_trajectory.h

@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/moveit_task_constructor/demo/scripts/generate_pose.py

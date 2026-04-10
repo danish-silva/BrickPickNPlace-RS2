@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/moveit2_tutorials/doc/tutorials/pick_and_place_with_moveit_task_constructor/launch/mtc_demo.launch.py

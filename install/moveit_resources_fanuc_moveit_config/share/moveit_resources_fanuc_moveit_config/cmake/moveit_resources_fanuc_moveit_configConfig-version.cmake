@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_resources_fanuc_moveit_config/ament_cmake_core/moveit_resources_fanuc_moveit_configConfig-version.cmake

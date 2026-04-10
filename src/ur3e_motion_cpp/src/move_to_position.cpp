@@ -1,46 +1,147 @@
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <geometry_msgs/msg/pose.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit_msgs/msg/collision_object.hpp>
+#include <moveit_msgs/msg/constraints.hpp>
+#include <moveit_msgs/msg/joint_constraint.hpp>
 #include <shape_msgs/msg/solid_primitive.hpp>
+
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <cmath>
+#include <mutex>
+#include <atomic>
 
 static const std::string PLANNING_GROUP = "ur_manipulator";
 
+// ---------------------------------------------------------------------------
+// Structure to hold a target pose cleanly
+// ---------------------------------------------------------------------------
+struct TargetPose {
+    double x, y, z;
+    double roll, pitch, yaw;
+    std::string name;
+};
+
+// ---------------------------------------------------------------------------
+// Global state for subscriber
+// ---------------------------------------------------------------------------
+std::vector<TargetPose> g_received_poses;
+std::mutex g_poses_mutex;
+std::atomic<bool> g_new_poses_available{false};
+
+// ---------------------------------------------------------------------------
+// Apply joint constraints to prevent >180 degree rotations
+// ---------------------------------------------------------------------------
+void applyJointConstraints(moveit::planning_interface::MoveGroupInterface & move_group)
+{
+    moveit_msgs::msg::Constraints constraints;
+
+    std::vector<std::pair<std::string, std::pair<double, double>>> joint_limits = {
+        {"shoulder_pan_joint",  {-2*M_PI,  2*M_PI}},
+        {"shoulder_lift_joint", {-M_PI,    M_PI  }},
+        {"elbow_joint",         {-M_PI,    M_PI  }},
+        {"wrist_1_joint",       {-M_PI,    M_PI  }},
+        {"wrist_2_joint",       {-M_PI,    M_PI  }},
+        {"wrist_3_joint",       {-M_PI,    M_PI  }},
+    };
+
+    for (auto & [name, limits] : joint_limits) {
+        moveit_msgs::msg::JointConstraint jc;
+        jc.joint_name      = name;
+        jc.position        = (limits.first + limits.second) / 2.0;
+        jc.tolerance_below = std::abs(jc.position - limits.first);
+        jc.tolerance_above = std::abs(limits.second - jc.position);
+        jc.weight          = 1.0;
+        constraints.joint_constraints.push_back(jc);
+    }
+
+    move_group.setPathConstraints(constraints);
+}
+
+// ---------------------------------------------------------------------------
+// Move to a single pose
+// ---------------------------------------------------------------------------
 bool moveToPose(
     moveit::planning_interface::MoveGroupInterface & move_group,
-    double x, double y, double z,
-    double roll, double pitch, double yaw)
+    const TargetPose & target,
+    const rclcpp::Logger & logger)
 {
-    geometry_msgs::msg::Pose target_pose;
-    target_pose.position.x = x;
-    target_pose.position.y = y;
-    target_pose.position.z = z;
+    RCLCPP_INFO(logger, "Moving to '%s' — x:%.2f y:%.2f z:%.2f r:%.2f p:%.2f y:%.2f",
+        target.name.c_str(),
+        target.x, target.y, target.z,
+        target.roll, target.pitch, target.yaw);
+
+    move_group.setStartStateToCurrentState();
+
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = target.x;
+    pose.position.y = target.y;
+    pose.position.z = target.z;
 
     tf2::Quaternion q;
-    q.setRPY(roll, pitch, yaw);
-    target_pose.orientation = tf2::toMsg(q);
+    q.setRPY(target.roll, target.pitch, target.yaw);
+    pose.orientation = tf2::toMsg(q);
 
-    move_group.setPoseTarget(target_pose);
+    move_group.setPoseTarget(pose);
+    move_group.setNumPlanningAttempts(20);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
-    if (!success) return false;
+    if (!success) {
+        RCLCPP_ERROR(logger, "Planning FAILED for '%s'", target.name.c_str());
+        return false;
+    }
 
-    return (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+    bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+    if (executed) {
+        RCLCPP_INFO(logger, "Reached '%s' ✓", target.name.c_str());
+    } else {
+        RCLCPP_ERROR(logger, "Execution FAILED for '%s'", target.name.c_str());
+    }
+
+    return executed;
 }
 
+// ---------------------------------------------------------------------------
+// Move through a list of poses, stopping if any movement fails
+// ---------------------------------------------------------------------------
+bool moveSequence(
+    moveit::planning_interface::MoveGroupInterface & move_group,
+    const std::vector<TargetPose> & targets,
+    const rclcpp::Logger & logger)
+{
+    RCLCPP_INFO(logger, "Starting sequence of %zu movements", targets.size());
+
+    for (size_t i = 0; i < targets.size(); ++i) {
+        RCLCPP_INFO(logger, "Step %zu / %zu", i + 1, targets.size());
+
+        if (!moveToPose(move_group, targets[i], logger)) {
+            RCLCPP_ERROR(logger, "Sequence aborted at step %zu / %zu — '%s' failed",
+                i + 1, targets.size(), targets[i].name.c_str());
+            return false;
+        }
+
+        rclcpp::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    RCLCPP_INFO(logger, "Sequence complete ✓ — all %zu movements succeeded", targets.size());
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Setup collision scene
+// ---------------------------------------------------------------------------
 void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
 {
     std::vector<moveit_msgs::msg::CollisionObject> objects;
 
-    // -----------------------------------------------------------------------
-    // Ground plane — sits at z=0, thick enough the planner respects it
-    // -----------------------------------------------------------------------
     {
         moveit_msgs::msg::CollisionObject ground;
         ground.header.frame_id = "base_link";
@@ -49,15 +150,13 @@ void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
         shape_msgs::msg::SolidPrimitive primitive;
         primitive.type = primitive.BOX;
         primitive.dimensions.resize(3);
-        primitive.dimensions[primitive.BOX_X] = 2.0;   // 2m wide
-        primitive.dimensions[primitive.BOX_Y] = 2.0;   // 2m deep
-        primitive.dimensions[primitive.BOX_Z] = 0.01;  // 1cm thin slab
+        primitive.dimensions[primitive.BOX_X] = 2.0;
+        primitive.dimensions[primitive.BOX_Y] = 2.0;
+        primitive.dimensions[primitive.BOX_Z] = 0.01;
 
         geometry_msgs::msg::Pose pose;
         pose.orientation.w = 1.0;
-        pose.position.x = 0.0;
-        pose.position.y = 0.0;
-        pose.position.z = -0.005;  // half thickness below z=0
+        pose.position.z    = -0.005;
 
         ground.primitives.push_back(primitive);
         ground.primitive_poses.push_back(pose);
@@ -65,9 +164,6 @@ void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
         objects.push_back(ground);
     }
 
-    // -----------------------------------------------------------------------
-    // Table surface — add if your robot is mounted on a table
-    // -----------------------------------------------------------------------
     {
         moveit_msgs::msg::CollisionObject table;
         table.header.frame_id = "base_link";
@@ -76,15 +172,15 @@ void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
         shape_msgs::msg::SolidPrimitive primitive;
         primitive.type = primitive.BOX;
         primitive.dimensions.resize(3);
-        primitive.dimensions[primitive.BOX_X] = 1.2;   // table length
-        primitive.dimensions[primitive.BOX_Y] = 0.8;   // table width
-        primitive.dimensions[primitive.BOX_Z] = 0.05;  // table top thickness
+        primitive.dimensions[primitive.BOX_X] = 1.2;
+        primitive.dimensions[primitive.BOX_Y] = 0.8;
+        primitive.dimensions[primitive.BOX_Z] = 0.05;
 
         geometry_msgs::msg::Pose pose;
         pose.orientation.w = 1.0;
-        pose.position.x =  0.3;    // in front of robot
-        pose.position.y =  0.0;
-        pose.position.z = -0.025;  // sits on the ground
+        pose.position.x    =  0.3;
+        pose.position.y    =  0.0;
+        pose.position.z    = -0.025;
 
         table.primitives.push_back(primitive);
         table.primitive_poses.push_back(pose);
@@ -92,11 +188,42 @@ void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
         objects.push_back(table);
     }
 
-    // Apply all objects at once
     scene.applyCollisionObjects(objects);
     RCLCPP_INFO(rclcpp::get_logger("move_to_position"), "Scene objects added ✓");
 }
 
+// ---------------------------------------------------------------------------
+// Print current end-effector pose
+// ---------------------------------------------------------------------------
+void printCurrentPose(
+    moveit::planning_interface::MoveGroupInterface & move_group,
+    const rclcpp::Logger & logger)
+{
+    geometry_msgs::msg::PoseStamped current = move_group.getCurrentPose();
+
+    tf2::Quaternion q(
+        current.pose.orientation.x,
+        current.pose.orientation.y,
+        current.pose.orientation.z,
+        current.pose.orientation.w
+    );
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    RCLCPP_INFO(logger, "Current pose:");
+    RCLCPP_INFO(logger, "  x: %.4f  y: %.4f  z: %.4f",
+        current.pose.position.x,
+        current.pose.position.y,
+        current.pose.position.z);
+    RCLCPP_INFO(logger, "  roll: %.1f°  pitch: %.1f°  yaw: %.1f°",
+        roll  * 180.0 / M_PI,
+        pitch * 180.0 / M_PI,
+        yaw   * 180.0 / M_PI);
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
@@ -105,142 +232,679 @@ int main(int argc, char * argv[])
         rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
     );
 
+    auto logger = node->get_logger();
+
+    // -----------------------------------------------------------------------
+    // Subscribe to ordered_pose_array topic
+    //
+    // Message type: std_msgs/Float64MultiArray
+    // Format: flat array of 6 values per pose [x, y, z, roll, pitch, yaw]
+    //
+    // Example for 2 poses:
+    // data: [0.3, 0.25, 0.3, 3.14159, 0.0, 0.0,
+    //        0.3, 0.25, 0.2, 3.14159, 0.0, 0.0]
+    // -----------------------------------------------------------------------
+    auto pose_subscription = node->create_subscription<std_msgs::msg::Float64MultiArray>(
+        "ordered_pose_array",
+        10,
+        [&logger](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+
+            // Each pose is exactly 6 values: x, y, z, roll, pitch, yaw
+            const size_t POSE_SIZE = 6;
+
+            if (msg->data.size() % POSE_SIZE != 0) {
+                RCLCPP_ERROR(logger,
+                    "Received array size %zu is not a multiple of 6 — ignoring",
+                    msg->data.size());
+                return;
+            }
+
+            size_t num_poses = msg->data.size() / POSE_SIZE;
+            RCLCPP_INFO(logger, "Received %zu poses", num_poses);
+
+            std::vector<TargetPose> new_poses;
+            for (size_t i = 0; i < num_poses; ++i) {
+                size_t offset = i * POSE_SIZE;
+                TargetPose tp;
+                tp.x     = msg->data[offset + 0];
+                tp.y     = msg->data[offset + 1];
+                tp.z     = msg->data[offset + 2];
+                tp.roll  = msg->data[offset + 3];
+                tp.pitch = msg->data[offset + 4];
+                tp.yaw   = msg->data[offset + 5];
+                tp.name  = "position_" + std::to_string(i + 1);
+
+                RCLCPP_INFO(logger,
+                    "  %s: x:%.3f y:%.3f z:%.3f r:%.3f p:%.3f y:%.3f",
+                    tp.name.c_str(),
+                    tp.x, tp.y, tp.z,
+                    tp.roll, tp.pitch, tp.yaw);
+
+                new_poses.push_back(tp);
+            }
+
+            std::lock_guard<std::mutex> lock(g_poses_mutex);
+            g_received_poses = new_poses;
+            g_new_poses_available = true;
+        }
+    );
+
+    // Spin node in background so subscriber and MoveGroupInterface can receive callbacks
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
     auto spinner = std::thread([&executor]() { executor.spin(); });
 
-    auto logger = node->get_logger();
-
     moveit::planning_interface::MoveGroupInterface move_group(node, PLANNING_GROUP);
     move_group.setMaxVelocityScalingFactor(0.3);
     move_group.setMaxAccelerationScalingFactor(0.3);
-    move_group.setPlanningTime(10.0);
+    move_group.setPlanningTime(15.0);
 
-    // -----------------------------------------------------------------------
-    // Setup scene BEFORE planning
-    // -----------------------------------------------------------------------
     moveit::planning_interface::PlanningSceneInterface scene;
-    setupScene(scene);  // <-- add this
-
-    // Small delay to let the scene update propagate to move_group
+    setupScene(scene);
     rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-    // ... rest of your code
-    bool success = moveToPose(move_group, 0.4, 0.2, 0.4, 0.0, M_PI/2.0, 0.0);
+    printCurrentPose(move_group, logger);
+
+    // -----------------------------------------------------------------------
+    // Wait for pose array then execute — loops so it re-runs on new data
+    // -----------------------------------------------------------------------
+    RCLCPP_INFO(logger, "Waiting for poses on 'ordered_pose_array'...");
+
+    while (rclcpp::ok()) {
+        if (g_new_poses_available) {
+            std::vector<TargetPose> targets;
+            {
+                std::lock_guard<std::mutex> lock(g_poses_mutex);
+                targets = g_received_poses;
+                g_new_poses_available = false;
+            }
+
+            RCLCPP_INFO(logger, "Executing sequence of %zu poses", targets.size());
+            moveSequence(move_group, targets, logger);
+
+            move_group.clearPathConstraints();
+            RCLCPP_INFO(logger, "Sequence complete — waiting for next pose array...");
+        }
+
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
 
     rclcpp::shutdown();
     spinner.join();
     return 0;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
 
+// #include <rclcpp/rclcpp.hpp>
+// #include <moveit/move_group_interface/move_group_interface.h>
+// #include <geometry_msgs/msg/pose.hpp>
+// #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+// #include <tf2/LinearMath/Quaternion.h>
 
+// #include <moveit/planning_scene_interface/planning_scene_interface.h>
+// #include <moveit_msgs/msg/collision_object.hpp>
+// #include <moveit_msgs/msg/constraints.hpp>
+// #include <moveit_msgs/msg/joint_constraint.hpp>
+// #include <shape_msgs/msg/solid_primitive.hpp>
 
+// #include <tf2/LinearMath/Matrix3x3.h>
+// #include <cmath>
+
+// static const std::string PLANNING_GROUP = "ur_manipulator";
+
+// // ---------------------------------------------------------------------------
+// // Structure to hold a target pose cleanly
+// // ---------------------------------------------------------------------------
+// struct TargetPose {
+//     double x, y, z;
+//     double roll, pitch, yaw;
+//     std::string name;  // optional label for logging
+// };
+
+// // ---------------------------------------------------------------------------
+// // Method 1 — Apply joint constraints to prevent >180 degree rotations
+// // ---------------------------------------------------------------------------
+// void applyJointConstraints(moveit::planning_interface::MoveGroupInterface & move_group)
+// {
+//     moveit_msgs::msg::Constraints constraints;
+
+//     std::vector<std::pair<std::string, std::pair<double, double>>> joint_limits = {
+//         {"shoulder_pan_joint",  {-2*M_PI,    2*M_PI}},   // loosened — full rotation allowed
+//         {"shoulder_lift_joint", {-M_PI,      M_PI}},     // loosened from {-M_PI, 0}
+//         {"elbow_joint",         {-M_PI,      M_PI}},
+//         {"wrist_1_joint",       {-M_PI,      M_PI}},
+//         {"wrist_2_joint",       {-M_PI,      M_PI}},
+//         {"wrist_3_joint",       {-M_PI,      M_PI}},
+//     };
+
+//     for (auto & [name, limits] : joint_limits) {
+//         moveit_msgs::msg::JointConstraint jc;
+//         jc.joint_name = name;
+//         jc.position = (limits.first + limits.second) / 2.0;
+//         jc.tolerance_below = std::abs(jc.position - limits.first);
+//         jc.tolerance_above = std::abs(limits.second - jc.position);
+//         jc.weight = 1.0;
+//         constraints.joint_constraints.push_back(jc);
+//     }
+
+//     move_group.setPathConstraints(constraints);
+// }
+
+// // ---------------------------------------------------------------------------
+// // Move to a single pose — Method 1 + 2 combined
+// // ---------------------------------------------------------------------------
+// bool moveToPose(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const TargetPose & target,
+//     const rclcpp::Logger & logger)
+// {
+//     RCLCPP_INFO(logger, "Moving to '%s' — x:%.2f y:%.2f z:%.2f r:%.2f p:%.2f y:%.2f",
+//         target.name.c_str(),
+//         target.x, target.y, target.z,
+//         target.roll, target.pitch, target.yaw);
+
+//     move_group.setStartStateToCurrentState();
+
+//     // Build target pose
+//     geometry_msgs::msg::Pose pose;
+//     pose.position.x = target.x;
+//     pose.position.y = target.y;
+//     pose.position.z = target.z;
+
+//     tf2::Quaternion q;
+//     q.setRPY(target.roll, target.pitch, target.yaw);
+//     pose.orientation = tf2::toMsg(q);
+
+//     move_group.setPoseTarget(pose);
+//     move_group.setNumPlanningAttempts(20);
+
+//     // Plan
+//     moveit::planning_interface::MoveGroupInterface::Plan plan;
+//     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+//     if (!success) {
+//         RCLCPP_ERROR(logger, "Planning FAILED for '%s'", target.name.c_str());
+//         return false;
+//     }
+
+//     // Execute
+//     bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+//     if (executed) {
+//         RCLCPP_INFO(logger, "Reached '%s' ✓", target.name.c_str());
+//     } else {
+//         RCLCPP_ERROR(logger, "Execution FAILED for '%s'", target.name.c_str());
+//     }
+
+//     return executed;
+// }
+
+// // ---------------------------------------------------------------------------
+// // Move through a list of poses, stopping if any movement fails
+// // ---------------------------------------------------------------------------
+// bool moveSequence(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const std::vector<TargetPose> & targets,
+//     const rclcpp::Logger & logger)
+// {
+//     RCLCPP_INFO(logger, "Starting sequence of %zu movements", targets.size());
+
+//     for (size_t i = 0; i < targets.size(); ++i) {
+//         RCLCPP_INFO(logger, "Step %zu / %zu", i + 1, targets.size());
+
+//         bool success = moveToPose(move_group, targets[i], logger);
+
+//         if (!success) {
+//             RCLCPP_ERROR(logger, "Sequence aborted at step %zu / %zu — '%s' failed",
+//                 i + 1, targets.size(), targets[i].name.c_str());
+//             return false;
+//         }
+
+//         // Small pause between movements
+//         rclcpp::sleep_for(std::chrono::milliseconds(500));
+//     }
+
+//     RCLCPP_INFO(logger, "Sequence complete ✓ — all %zu movements succeeded", targets.size());
+//     return true;
+// }
+
+// // ---------------------------------------------------------------------------
+// // Setup collision scene
+// // ---------------------------------------------------------------------------
+// void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
+// {
+//     std::vector<moveit_msgs::msg::CollisionObject> objects;
+
+//     {
+//         moveit_msgs::msg::CollisionObject ground;
+//         ground.header.frame_id = "base_link";
+//         ground.id = "ground";
+
+//         shape_msgs::msg::SolidPrimitive primitive;
+//         primitive.type = primitive.BOX;
+//         primitive.dimensions.resize(3);
+//         primitive.dimensions[primitive.BOX_X] = 2.0;
+//         primitive.dimensions[primitive.BOX_Y] = 2.0;
+//         primitive.dimensions[primitive.BOX_Z] = 0.01;
+
+//         geometry_msgs::msg::Pose pose;
+//         pose.orientation.w = 1.0;
+//         pose.position.x = 0.0;
+//         pose.position.y = 0.0;
+//         pose.position.z = -0.005;
+
+//         ground.primitives.push_back(primitive);
+//         ground.primitive_poses.push_back(pose);
+//         ground.operation = ground.ADD;
+//         objects.push_back(ground);
+//     }
+
+//     {
+//         moveit_msgs::msg::CollisionObject table;
+//         table.header.frame_id = "base_link";
+//         table.id = "table";
+
+//         shape_msgs::msg::SolidPrimitive primitive;
+//         primitive.type = primitive.BOX;
+//         primitive.dimensions.resize(3);
+//         primitive.dimensions[primitive.BOX_X] = 1.2;
+//         primitive.dimensions[primitive.BOX_Y] = 0.8;
+//         primitive.dimensions[primitive.BOX_Z] = 0.05;
+
+//         geometry_msgs::msg::Pose pose;
+//         pose.orientation.w = 1.0;
+//         pose.position.x =  0.3;
+//         pose.position.y =  0.0;
+//         pose.position.z = -0.025;
+
+//         table.primitives.push_back(primitive);
+//         table.primitive_poses.push_back(pose);
+//         table.operation = table.ADD;
+//         objects.push_back(table);
+//     }
+
+//     scene.applyCollisionObjects(objects);
+//     RCLCPP_INFO(rclcpp::get_logger("move_to_position"), "Scene objects added ✓");
+// }
+
+// void printCurrentPose(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const rclcpp::Logger & logger)
+// {
+//     // Get current pose
+//     geometry_msgs::msg::PoseStamped current = move_group.getCurrentPose();
+
+//     double x = current.pose.position.x;
+//     double y = current.pose.position.y;
+//     double z = current.pose.position.z;
+
+//     // Convert quaternion to RPY
+//     tf2::Quaternion q(
+//         current.pose.orientation.x,
+//         current.pose.orientation.y,
+//         current.pose.orientation.z,
+//         current.pose.orientation.w
+//     );
+//     tf2::Matrix3x3 m(q);
+//     double roll, pitch, yaw;
+//     m.getRPY(roll, pitch, yaw);
+
+//     RCLCPP_INFO(logger, "Current pose:");
+//     RCLCPP_INFO(logger, "  x: %.4f  y: %.4f  z: %.4f", x, y, z);
+//     RCLCPP_INFO(logger, "  roll: %.4f  pitch: %.4f  yaw: %.4f", roll, pitch, yaw);
+//     RCLCPP_INFO(logger, "  roll: %.1f°  pitch: %.1f°  yaw: %.1f°",
+//         roll  * 180.0 / M_PI,
+//         pitch * 180.0 / M_PI,
+//         yaw   * 180.0 / M_PI);
+// }
+
+// // ---------------------------------------------------------------------------
+// // Main
+// // ---------------------------------------------------------------------------
 // int main(int argc, char * argv[])
 // {
-//   // ---------------------------------------------------------------------------
-//   // 1. Init ROS2
-//   // ---------------------------------------------------------------------------
-//   rclcpp::init(argc, argv);
-//   auto node = rclcpp::Node::make_shared(
-//     "move_to_position",
-//     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
-//   );
+//     rclcpp::init(argc, argv);
+//     auto node = rclcpp::Node::make_shared(
+//         "move_to_position",
+//         rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
+//     );
 
-//   // Spin node in background so MoveGroupInterface can receive callbacks
-//   rclcpp::executors::SingleThreadedExecutor executor;
-//   executor.add_node(node);
-//   auto spinner = std::thread([&executor]() { executor.spin(); });
+//     rclcpp::executors::SingleThreadedExecutor executor;
+//     executor.add_node(node);
+//     auto spinner = std::thread([&executor]() { executor.spin(); });
 
-//   auto logger = node->get_logger();
+//     auto logger = node->get_logger();
 
-//   // ---------------------------------------------------------------------------
-//   // 2. Connect to MoveGroupInterface (talks to running move_group node)
-//   // ---------------------------------------------------------------------------
-//   RCLCPP_INFO(logger, "Connecting to move_group...");
-//   moveit::planning_interface::MoveGroupInterface move_group(node, PLANNING_GROUP);
+//     moveit::planning_interface::MoveGroupInterface move_group(node, PLANNING_GROUP);
+//     move_group.setMaxVelocityScalingFactor(0.3);
+//     move_group.setMaxAccelerationScalingFactor(0.3);
+//     move_group.setPlanningTime(15.0);
 
-//   move_group.setMaxVelocityScalingFactor(0.3);
-//   move_group.setMaxAccelerationScalingFactor(0.3);
-//   move_group.setPlanningTime(10.0);
-//   move_group.setNumPlanningAttempts(10);
+//     // Setup collision scene
+//     moveit::planning_interface::PlanningSceneInterface scene;
+//     setupScene(scene);
+//     rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-//   RCLCPP_INFO(logger, "Connected! Planning frame: %s", move_group.getPlanningFrame().c_str());
-//   RCLCPP_INFO(logger, "End effector link: %s", move_group.getEndEffectorLink().c_str());
+//     printCurrentPose(move_group, logger);
 
-//   // ---------------------------------------------------------------------------
-//   // 3. Option A — Joint space goal
-//   // ---------------------------------------------------------------------------
-//   // Uncomment this block to use joint angles instead of Cartesian pose
+//     std::vector<TargetPose> targets = {
+//         {0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_1"},
+//         {0.3,  0.25,  0.2,  M_PI,  0.0,  0.0,  "position_2"},
+//         {0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_3"},
+//         {-0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_4"},
+//     };
 
-//   // std::vector<double> joint_goal = {
-//   //   0.0,                     // shoulder_pan
-//   //   -M_PI / 2.0,             // shoulder_lift  (-90 deg)
-//   //   M_PI / 2.0,              // elbow          ( 90 deg)
-//   //   -M_PI / 2.0,             // wrist_1        (-90 deg)
-//   //   -M_PI / 2.0,             // wrist_2        (-90 deg)
-//   //   0.0                      // wrist_3
-//   // };
-//   // move_group.setJointValueTarget(joint_goal);
+//     // Execute the sequence
+//     moveSequence(move_group, targets, logger);
 
-//   // ---------------------------------------------------------------------------
-//   // 4. Option B — Cartesian (XYZ + RPY) goal  [ACTIVE]
-//   // ---------------------------------------------------------------------------
-//   // Set your target pose here — position in metres, angles in radians
-//   // All values are relative to the robot base_link frame
+//     // Clear constraints when fully done
+//     move_group.clearPathConstraints();
 
-// //   geometry_msgs::msg::Pose target_pose;
-
-// //   // Position
-// //   target_pose.position.x = 0.3;   // metres forward
-// //   target_pose.position.y = 0.2;   // metres left
-// //   target_pose.position.z = 0.4;   // metres up
-
-// //   // Orientation — convert RPY to quaternion
-// //   tf2::Quaternion q;
-// //   q.setRPY(
-// //     0.0,              // roll
-// //     M_PI / 2.0,       // pitch — tool pointing down
-// //     0.0               // yaw
-// //   );
-// //   target_pose.orientation = tf2::toMsg(q);
-
-// //   move_group.setPoseTarget(target_pose);
-
-
-// //   // ---------------------------------------------------------------------------
-// //   // 5. Plan
-// //   // ---------------------------------------------------------------------------
-// //   RCLCPP_INFO(logger, "Planning...");
-// //   moveit::planning_interface::MoveGroupInterface::Plan plan;
-// //   bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-
-// //   if (!success) {
-// //     RCLCPP_ERROR(logger, "Planning FAILED");
-// //     rclcpp::shutdown();
-// //     spinner.join();
-// //     return 1;
-// //   }
-
-// //   RCLCPP_INFO(logger, "Plan found! Executing...");
-
-// //   // ---------------------------------------------------------------------------
-// //   // 6. Execute
-// //   // ---------------------------------------------------------------------------
-// //   auto result = move_group.execute(plan);
-
-// //   if (result == moveit::core::MoveItErrorCode::SUCCESS) {
-// //     RCLCPP_INFO(logger, "Motion complete ✓");
-// //   } else {
-// //     RCLCPP_ERROR(logger, "Execution FAILED — error code: %d", result.val);
-// //   }
-
-//   bool success = moveToPose(move_group, 0.3, 0.2, 0.4, 0.0, M_PI/2.0, 0.0);
-
-//   // ---------------------------------------------------------------------------
-//   // 7. Shutdown
-//   // ---------------------------------------------------------------------------
-//   rclcpp::shutdown();
-//   spinner.join();
-//   return 0;
+//     rclcpp::shutdown();
+//     spinner.join();
+//     return 0;
 // }
+
+// -------------------------------------------------------------------------------------------------------------------------------------
+
+
+// #include <rclcpp/rclcpp.hpp>
+// #include <moveit/move_group_interface/move_group_interface.h>
+// #include <geometry_msgs/msg/pose.hpp>
+// #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+// #include <tf2/LinearMath/Quaternion.h>
+
+// #include <moveit/planning_scene_interface/planning_scene_interface.h>
+// #include <moveit_msgs/msg/collision_object.hpp>
+// #include <moveit_msgs/msg/constraints.hpp>
+// #include <moveit_msgs/msg/joint_constraint.hpp>
+// #include <shape_msgs/msg/solid_primitive.hpp>
+
+// #include <tf2/LinearMath/Matrix3x3.h>
+// #include <cmath>
+
+// static const std::string PLANNING_GROUP = "ur_manipulator";
+
+// // ---------------------------------------------------------------------------
+// // Structure to hold a target pose cleanly
+// // ---------------------------------------------------------------------------
+// struct TargetPose {
+//     double x, y, z;
+//     double roll, pitch, yaw;
+//     std::string name;  // optional label for logging
+// };
+
+// // ---------------------------------------------------------------------------
+// // Method 1 — Apply joint constraints to prevent >180 degree rotations
+// // ---------------------------------------------------------------------------
+// void applyJointConstraints(moveit::planning_interface::MoveGroupInterface & move_group)
+// {
+//     moveit_msgs::msg::Constraints constraints;
+
+//     std::vector<std::pair<std::string, std::pair<double, double>>> joint_limits = {
+//         {"shoulder_pan_joint",  {-2*M_PI,    2*M_PI}},   // loosened — full rotation allowed
+//         {"shoulder_lift_joint", {-M_PI,      M_PI}},     // loosened from {-M_PI, 0}
+//         {"elbow_joint",         {-M_PI,      M_PI}},
+//         {"wrist_1_joint",       {-M_PI,      M_PI}},
+//         {"wrist_2_joint",       {-M_PI,      M_PI}},
+//         {"wrist_3_joint",       {-M_PI,      M_PI}},
+//     };
+
+//     for (auto & [name, limits] : joint_limits) {
+//         moveit_msgs::msg::JointConstraint jc;
+//         jc.joint_name = name;
+//         jc.position = (limits.first + limits.second) / 2.0;
+//         jc.tolerance_below = std::abs(jc.position - limits.first);
+//         jc.tolerance_above = std::abs(limits.second - jc.position);
+//         jc.weight = 1.0;
+//         constraints.joint_constraints.push_back(jc);
+//     }
+
+//     move_group.setPathConstraints(constraints);
+// }
+
+// // ---------------------------------------------------------------------------
+// // Move to a single pose — Method 1 + 2 combined
+// // ---------------------------------------------------------------------------
+// bool moveToPose(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const TargetPose & target,
+//     const rclcpp::Logger & logger)
+// {
+//     RCLCPP_INFO(logger, "Moving to '%s' — x:%.2f y:%.2f z:%.2f r:%.2f p:%.2f y:%.2f",
+//         target.name.c_str(),
+//         target.x, target.y, target.z,
+//         target.roll, target.pitch, target.yaw);
+
+//     // Seed the IK search from a known good joint configuration
+//     // moveit::core::RobotStatePtr seed_state = move_group.getCurrentState();
+//     // const moveit::core::JointModelGroup* jmg =
+//     //     seed_state->getJointModelGroup(PLANNING_GROUP);
+
+//     // std::vector<double> seed = {
+//     //     0.0,
+//     //     -1.5707963267948966,
+//     //     -1.5707963267948966,
+//     //     -1.5707963267948966,
+//     //     1.5707963267948966,
+//     //     0.0
+//     // };
+//     // seed_state->setJointGroupPositions(jmg, seed);
+//     // move_group.setStartState(*seed_state);
+
+//     // Replace your custom seed with current robot state
+//     // auto seed_state = move_group.getCurrentState();
+//     // move_group.setStartState(*seed_state);
+
+//     move_group.setStartStateToCurrentState();
+
+//     // Build target pose
+//     geometry_msgs::msg::Pose pose;
+//     pose.position.x = target.x;
+//     pose.position.y = target.y;
+//     pose.position.z = target.z;
+
+//     tf2::Quaternion q;
+//     q.setRPY(target.roll, target.pitch, target.yaw);
+//     pose.orientation = tf2::toMsg(q);
+
+//     move_group.setPoseTarget(pose);
+//     move_group.setNumPlanningAttempts(20);
+
+//     // Plan
+//     moveit::planning_interface::MoveGroupInterface::Plan plan;
+//     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+//     if (!success) {
+//         RCLCPP_ERROR(logger, "Planning FAILED for '%s'", target.name.c_str());
+//         return false;
+//     }
+
+//     // Execute
+//     bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+//     if (executed) {
+//         RCLCPP_INFO(logger, "Reached '%s' ✓", target.name.c_str());
+//     } else {
+//         RCLCPP_ERROR(logger, "Execution FAILED for '%s'", target.name.c_str());
+//     }
+
+//     return executed;
+// }
+
+// // ---------------------------------------------------------------------------
+// // Move through a list of poses, stopping if any movement fails
+// // ---------------------------------------------------------------------------
+// bool moveSequence(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const std::vector<TargetPose> & targets,
+//     const rclcpp::Logger & logger)
+// {
+//     RCLCPP_INFO(logger, "Starting sequence of %zu movements", targets.size());
+
+//     for (size_t i = 0; i < targets.size(); ++i) {
+//         RCLCPP_INFO(logger, "Step %zu / %zu", i + 1, targets.size());
+
+//         bool success = moveToPose(move_group, targets[i], logger);
+
+//         if (!success) {
+//             RCLCPP_ERROR(logger, "Sequence aborted at step %zu / %zu — '%s' failed",
+//                 i + 1, targets.size(), targets[i].name.c_str());
+//             return false;
+//         }
+
+//         // Small pause between movements
+//         rclcpp::sleep_for(std::chrono::milliseconds(500));
+//     }
+
+//     RCLCPP_INFO(logger, "Sequence complete ✓ — all %zu movements succeeded", targets.size());
+//     return true;
+// }
+
+// // ---------------------------------------------------------------------------
+// // Setup collision scene
+// // ---------------------------------------------------------------------------
+// void setupScene(moveit::planning_interface::PlanningSceneInterface & scene)
+// {
+//     std::vector<moveit_msgs::msg::CollisionObject> objects;
+
+//     {
+//         moveit_msgs::msg::CollisionObject ground;
+//         ground.header.frame_id = "base_link";
+//         ground.id = "ground";
+
+//         shape_msgs::msg::SolidPrimitive primitive;
+//         primitive.type = primitive.BOX;
+//         primitive.dimensions.resize(3);
+//         primitive.dimensions[primitive.BOX_X] = 2.0;
+//         primitive.dimensions[primitive.BOX_Y] = 2.0;
+//         primitive.dimensions[primitive.BOX_Z] = 0.01;
+
+//         geometry_msgs::msg::Pose pose;
+//         pose.orientation.w = 1.0;
+//         pose.position.x = 0.0;
+//         pose.position.y = 0.0;
+//         pose.position.z = -0.005;
+
+//         ground.primitives.push_back(primitive);
+//         ground.primitive_poses.push_back(pose);
+//         ground.operation = ground.ADD;
+//         objects.push_back(ground);
+//     }
+
+//     {
+//         moveit_msgs::msg::CollisionObject table;
+//         table.header.frame_id = "base_link";
+//         table.id = "table";
+
+//         shape_msgs::msg::SolidPrimitive primitive;
+//         primitive.type = primitive.BOX;
+//         primitive.dimensions.resize(3);
+//         primitive.dimensions[primitive.BOX_X] = 1.2;
+//         primitive.dimensions[primitive.BOX_Y] = 0.8;
+//         primitive.dimensions[primitive.BOX_Z] = 0.05;
+
+//         geometry_msgs::msg::Pose pose;
+//         pose.orientation.w = 1.0;
+//         pose.position.x =  0.3;
+//         pose.position.y =  0.0;
+//         pose.position.z = -0.025;
+
+//         table.primitives.push_back(primitive);
+//         table.primitive_poses.push_back(pose);
+//         table.operation = table.ADD;
+//         objects.push_back(table);
+//     }
+
+//     scene.applyCollisionObjects(objects);
+//     RCLCPP_INFO(rclcpp::get_logger("move_to_position"), "Scene objects added ✓");
+// }
+
+// void printCurrentPose(
+//     moveit::planning_interface::MoveGroupInterface & move_group,
+//     const rclcpp::Logger & logger)
+// {
+//     // Get current pose
+//     geometry_msgs::msg::PoseStamped current = move_group.getCurrentPose();
+
+//     double x = current.pose.position.x;
+//     double y = current.pose.position.y;
+//     double z = current.pose.position.z;
+
+//     // Convert quaternion to RPY
+//     tf2::Quaternion q(
+//         current.pose.orientation.x,
+//         current.pose.orientation.y,
+//         current.pose.orientation.z,
+//         current.pose.orientation.w
+//     );
+//     tf2::Matrix3x3 m(q);
+//     double roll, pitch, yaw;
+//     m.getRPY(roll, pitch, yaw);
+
+//     RCLCPP_INFO(logger, "Current pose:");
+//     RCLCPP_INFO(logger, "  x: %.4f  y: %.4f  z: %.4f", x, y, z);
+//     RCLCPP_INFO(logger, "  roll: %.4f  pitch: %.4f  yaw: %.4f", roll, pitch, yaw);
+//     RCLCPP_INFO(logger, "  roll: %.1f°  pitch: %.1f°  yaw: %.1f°",
+//         roll  * 180.0 / M_PI,
+//         pitch * 180.0 / M_PI,
+//         yaw   * 180.0 / M_PI);
+// }
+
+// // ---------------------------------------------------------------------------
+// // Main
+// // ---------------------------------------------------------------------------
+// int main(int argc, char * argv[])
+// {
+//     rclcpp::init(argc, argv);
+//     auto node = rclcpp::Node::make_shared(
+//         "move_to_position",
+//         rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
+//     );
+
+//     rclcpp::executors::SingleThreadedExecutor executor;
+//     executor.add_node(node);
+//     auto spinner = std::thread([&executor]() { executor.spin(); });
+
+//     auto logger = node->get_logger();
+
+//     moveit::planning_interface::MoveGroupInterface move_group(node, PLANNING_GROUP);
+//     move_group.setMaxVelocityScalingFactor(0.3);
+//     move_group.setMaxAccelerationScalingFactor(0.3);
+//     move_group.setPlanningTime(15.0);
+
+//     // Setup collision scene
+//     moveit::planning_interface::PlanningSceneInterface scene;
+//     setupScene(scene);
+//     rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+//     // Method 1 — apply joint constraints globally before any planning
+//     //applyJointConstraints(move_group);
+
+//     // -----------------------------------------------------------------------
+//     // Define your list of target positions here
+//     //                       x     y     z     roll  pitch      yaw   name
+//     // -----------------------------------------------------------------------
+
+//     printCurrentPose(move_group, logger);
+
+//     std::vector<TargetPose> targets = {
+//         {0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_1"},
+//         {0.3,  0.25,  0.2,  M_PI,  0.0,  0.0,  "position_2"},
+//         {0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_3"},
+//         {-0.3,  0.25,  0.3,  M_PI,  0.0,  0.0,  "position_4"},
+//     };
+
+//     // Execute the sequence
+//     moveSequence(move_group, targets, logger);
+
+//     // Clear constraints when fully done
+//     move_group.clearPathConstraints();
+
+//     rclcpp::shutdown();
+//     spinner.join();
+//     return 0;
+// }
+
+

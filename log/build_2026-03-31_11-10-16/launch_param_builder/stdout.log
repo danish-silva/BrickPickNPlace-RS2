@@ -1,0 +1,31 @@
+running develop
+running egg_info
+creating launch_param_builder.egg-info
+writing launch_param_builder.egg-info/PKG-INFO
+writing dependency_links to launch_param_builder.egg-info/dependency_links.txt
+writing entry points to launch_param_builder.egg-info/entry_points.txt
+writing requirements to launch_param_builder.egg-info/requires.txt
+writing top-level names to launch_param_builder.egg-info/top_level.txt
+writing manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+reading manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+writing manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/b/ws_moveit2/install/launch_param_builder/lib/python3.10/site-packages/launch-param-builder.egg-link (link to .)
+
+Installed /home/b/ws_moveit2/build/launch_param_builder
+running symlink_data
+creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index
+creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index
+creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index/packages
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/resource/launch_param_builder -> /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index/packages
+creating /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/launch
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/example/launch_param_builder_example.launch.py -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/launch
+creating /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameters_injection.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/param_file_to_inject.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameter.xacro -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameters.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameter_file -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/package.xml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder
+creating /home/b/ws_moveit2/install/launch_param_builder/lib/launch_param_builder
+symbolically linking /home/b/ws_moveit2/build/launch_param_builder/example/example_node.py -> /home/b/ws_moveit2/install/launch_param_builder/lib/launch_param_builder

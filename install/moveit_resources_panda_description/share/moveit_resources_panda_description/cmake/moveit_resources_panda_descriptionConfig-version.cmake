@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_resources_panda_description/ament_cmake_core/moveit_resources_panda_descriptionConfig-version.cmake

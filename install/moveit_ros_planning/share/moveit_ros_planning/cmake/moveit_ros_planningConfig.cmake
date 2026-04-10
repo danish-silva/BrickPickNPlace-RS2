@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_ros_planning/ament_cmake_core/moveit_ros_planningConfig.cmake

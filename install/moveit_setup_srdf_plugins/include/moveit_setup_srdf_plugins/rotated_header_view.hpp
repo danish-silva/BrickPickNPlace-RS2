@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/moveit2/moveit_setup_assistant/moveit_setup_srdf_plugins/include/moveit_setup_srdf_plugins/rotated_header_view.hpp

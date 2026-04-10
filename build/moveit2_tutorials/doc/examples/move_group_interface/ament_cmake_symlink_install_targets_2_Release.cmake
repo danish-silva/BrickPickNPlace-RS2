@@ -1,0 +1,1 @@
+ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/moveit2_tutorials/doc/examples/move_group_interface/move_group_interface_tutorial" "TARGETS" "move_group_interface_tutorial" "DESTINATION" "lib/moveit2_tutorials")

@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_ros_warehouse/ament_cmake_core/moveit_ros_warehouseConfig.cmake

@@ -1,0 +1,1 @@
+ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/moveit_py/test_moveit/planning.cpython-310-x86_64-linux-gnu.so" "TARGETS" "planning" "DESTINATION" "local/lib/python3.10/dist-packages/moveit")

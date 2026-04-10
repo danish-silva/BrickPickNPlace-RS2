@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(ur3e_motion_cpp)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
@@ -14,10 +14,21 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 
-# Build the executable
+# Build executables
 add_executable(move_to_position src/move_to_position.cpp)
+add_executable(move_to_position_testing src/move_to_position_testing.cpp)
 
 ament_target_dependencies(move_to_position
+  rclcpp
+  moveit_ros_planning_interface
+  moveit_msgs
+  geometry_msgs
+  tf2_geometry_msgs
+  tf2
+  std_msgs
+)
+
+ament_target_dependencies(move_to_position_testing
   rclcpp
   moveit_ros_planning_interface
   moveit_msgs
@@ -28,7 +39,12 @@ ament_target_dependencies(move_to_position
 
 # Install
 install(TARGETS move_to_position
+  move_to_position_testing
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()

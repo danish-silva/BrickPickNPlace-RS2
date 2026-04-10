@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/build/moveit_task_constructor_demo/ament_cmake_environment_hooks/local_setup.zsh

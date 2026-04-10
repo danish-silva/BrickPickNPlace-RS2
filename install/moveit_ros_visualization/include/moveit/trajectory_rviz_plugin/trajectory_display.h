@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/moveit2/moveit_ros/visualization/trajectory_rviz_plugin/include/moveit/trajectory_rviz_plugin/trajectory_display.h

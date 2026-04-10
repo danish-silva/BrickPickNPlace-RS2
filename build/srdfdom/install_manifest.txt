@@ -1,0 +1,4 @@
+/home/b/ws_moveit2/install/srdfdom/lib/libsrdfdom.so.2.0.8
+/home/b/ws_moveit2/install/srdfdom/lib/libsrdfdom.so
+/home/b/ws_moveit2/install/srdfdom/share/srdfdom/cmake/srdfdomTargetsExport.cmake
+/home/b/ws_moveit2/install/srdfdom/share/srdfdom/cmake/srdfdomTargetsExport-noconfig.cmake

@@ -1,0 +1,33 @@
+[1.295s] Invoking command in '/home/b/ws_moveit2/build/launch_param_builder': PYTHONPATH=/home/b/ws_moveit2/build/launch_param_builder/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/b/ws_moveit2/install/launch_param_builder/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/b/ws_moveit2/build/launch_param_builder/build --no-deps symlink_data
+[1.762s] running develop
+[2.028s] running egg_info
+[2.028s] creating launch_param_builder.egg-info
+[2.029s] writing launch_param_builder.egg-info/PKG-INFO
+[2.029s] writing dependency_links to launch_param_builder.egg-info/dependency_links.txt
+[2.030s] writing entry points to launch_param_builder.egg-info/entry_points.txt
+[2.030s] writing requirements to launch_param_builder.egg-info/requires.txt
+[2.030s] writing top-level names to launch_param_builder.egg-info/top_level.txt
+[2.031s] writing manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+[2.035s] reading manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+[2.036s] writing manifest file 'launch_param_builder.egg-info/SOURCES.txt'
+[2.039s] running build_ext
+[2.039s] Creating /home/b/ws_moveit2/install/launch_param_builder/lib/python3.10/site-packages/launch-param-builder.egg-link (link to .)
+[2.040s] 
+[2.042s] Installed /home/b/ws_moveit2/build/launch_param_builder
+[2.042s] running symlink_data
+[2.042s] creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index
+[2.043s] creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index
+[2.044s] creating /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index/packages
+[2.044s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/resource/launch_param_builder -> /home/b/ws_moveit2/install/launch_param_builder/share/ament_index/resource_index/packages
+[2.044s] creating /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/launch
+[2.045s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/example/launch_param_builder_example.launch.py -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/launch
+[2.045s] creating /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.045s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameters_injection.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.046s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/param_file_to_inject.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.046s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameter.xacro -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.046s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameters.yaml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.046s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/test/data/parameter_file -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder/config
+[2.046s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/package.xml -> /home/b/ws_moveit2/install/launch_param_builder/share/launch_param_builder
+[2.046s] creating /home/b/ws_moveit2/install/launch_param_builder/lib/launch_param_builder
+[2.047s] symbolically linking /home/b/ws_moveit2/build/launch_param_builder/example/example_node.py -> /home/b/ws_moveit2/install/launch_param_builder/lib/launch_param_builder
+[2.109s] Invoked command in '/home/b/ws_moveit2/build/launch_param_builder' returned '0': PYTHONPATH=/home/b/ws_moveit2/build/launch_param_builder/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/b/ws_moveit2/install/launch_param_builder/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/b/ws_moveit2/build/launch_param_builder/build --no-deps symlink_data

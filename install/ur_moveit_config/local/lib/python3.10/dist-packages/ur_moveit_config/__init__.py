@@ -1,0 +1,1 @@
+/home/b/ws_moveit2/src/ur_moveit_config/ur_moveit_config/__init__.py
