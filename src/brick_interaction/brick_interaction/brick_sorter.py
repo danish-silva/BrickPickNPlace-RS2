@@ -92,38 +92,70 @@ PLACEMENT_SLOTS = [
 
 
 # ===========================================================================
-# VISION INTEGRATION POINT
+# VISION INTEGRATION — converts Detection3DArray → list[Brick]
 # ===========================================================================
-# When the perception node (Danish) is ready, replace MOCK_BRICKS with the
-# output of bricks_from_perception() defined below.
-#
-# Perception subscriber topic : /perception/brick_list
-# Perception message type     : <custom msg — TBD by perception team>
-#
-# Uncomment and complete this function, then call it from
-# interaction_node._bricks_to_use():
-#
-#   def bricks_from_perception(msg) -> list:
-#       """Convert a perception message into a list of Brick objects."""
-#       return [
-#           Brick(
-#               x=det.pose.position.x,
-#               y=det.pose.position.y,
-#               z=det.pose.position.z,
-#               theta=yaw_from_quaternion(det.pose.orientation),
-#               colour=det.colour,
-#               size=det.size,
-#           )
-#           for det in msg.bricks          # update field name to match msg def
-#       ]
-#
-#   def yaw_from_quaternion(q) -> float:
-#       """Extract yaw (z-axis rotation) from a geometry_msgs/Quaternion."""
-#       import math
-#       siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-#       cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-#       return math.atan2(siny_cosp, cosy_cosp)
+# Perception publishes: vision_msgs/Detection3DArray
+#   - det.bbox.center.position   → x, y, z (metres, camera_color_optical_frame)
+#   - det.bbox.center.orientation → quaternion
+#   - det.bbox.size              → x (length), y (width), z (height) in metres
+#   - det.results[0].hypothesis.class_id → colour string ("red", "blue", …)
+#   - det.results[0].hypothesis.score    → detection confidence
 # ===========================================================================
+
+
+def _yaw_from_quaternion(q) -> float:
+    """Extract yaw (z-axis rotation) from a geometry_msgs/Quaternion."""
+    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+def _size_label_from_bbox(size) -> str:
+    """
+    Convert bounding-box dimensions (metres) to a human-readable brick size.
+
+    The perception bbox.size gives length (x) and width (y) in metres.
+    LEGO stud pitch is ~8 mm, so divide each dimension by 0.008 and round
+    to the nearest even integer to get stud counts.
+
+    Falls back to 'unknown' if the dimensions don't map cleanly.
+    """
+    stud_x = round(size.x / 0.008)
+    stud_y = round(size.y / 0.008)
+    lo, hi = sorted([stud_x, stud_y])
+    if lo >= 1 and hi >= 1:
+        return f'{lo}x{hi}'
+    return 'unknown'
+
+
+def bricks_from_detections(msg) -> list[Brick]:
+    """
+    Convert a vision_msgs/Detection3DArray into a list of Brick objects.
+
+    Args:
+        msg: A vision_msgs/Detection3DArray published by the perception node.
+
+    Returns:
+        List of Brick objects with coordinates in the perception frame.
+        NOTE: These may need a TF transform to the robot base frame
+        before being used for motion planning.
+    """
+    bricks = []
+    for det in msg.detections:
+        if not det.results:
+            continue
+        colour = det.results[0].hypothesis.class_id
+        p = det.bbox.center.position
+        q = det.bbox.center.orientation
+        bricks.append(Brick(
+            x=p.x,
+            y=p.y,
+            z=p.z,
+            theta=_yaw_from_quaternion(q),
+            colour=colour,
+            size=_size_label_from_bbox(det.bbox.size),
+        ))
+    return bricks
 
 
 def _xy_distance(brick: Brick, reference: tuple) -> float:

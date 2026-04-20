@@ -6,27 +6,36 @@ Responsibilities:
   - Receives start/pause/stop commands from the GUI on /brick_command
   - Manages system state via StateMachine
   - Sorts detected bricks by distance from the robot arm base (closest first)
-  - Sends each brick pose in order to MotionClient → MoveIt2 /move_action server
+  - Executes an 8-step pick-and-place sequence per brick:
+      1. Approach above brick   (arm moves at safe Z height)
+      2. Descend to brick       (arm lowers to grab height)
+      3. Grab                   (gripper closes)
+      4. Retract with brick     (arm rises back to safe Z height)
+      5. Approach above slot    (arm moves at safe Z height)
+      6. Descend to slot        (arm lowers to release height)
+      7. Release                (gripper opens)
+      8. Retract                (arm rises back to safe Z height)
   - Publishes the current system state to /system_status for the GUI
 
 Topics:
-  Subscribes:  /brick_command        (std_msgs/String)          <- brick_gui
-  Subscribes:  /brick_detections     (geometry_msgs/PoseArray)  <- perception
-                                     TODO: update topic to /perception/brick_list
-                                     when Danish's perception node is integrated
-  Publishes:   /system_status        (std_msgs/String)          -> brick_gui
+  Subscribes:  /brick_command        (std_msgs/String)              <- brick_gui
+  Subscribes:  /brick_detections     (vision_msgs/Detection3DArray) <- perception
+  Publishes:   /system_status        (std_msgs/String)              -> brick_gui
 """
 
+import enum
 import math
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_msgs.msg import String
-from geometry_msgs.msg import Pose, PoseArray
+from geometry_msgs.msg import Pose
+from vision_msgs.msg import Detection3DArray
 
 from brick_interaction.state_machine import StateMachine, SystemState
 from brick_interaction.motion_client import MotionClient
+from brick_interaction.gripper_client import GripperClient
 from brick_interaction.brick_sorter import (
     Brick,
     PlacementSlot,
@@ -35,7 +44,49 @@ from brick_interaction.brick_sorter import (
     ROBOT_BASE,
     sort_by_distance,
     format_sorted_summary,
+    bricks_from_detections,
 )
+
+
+# ===========================================================================
+# CONFIGURABLE CONSTANTS — edit these to tune heights, gripper widths, etc.
+# ===========================================================================
+
+# Heights (metres above the brick/slot surface Z coordinate)
+Z_APPROACH = 0.15       # safe clearance for lateral travel
+Z_GRAB     = 0.005      # height above surface for grab / release
+
+# Gripper finger widths (metres) — adjust for brick size
+GRIPPER_OPEN_WIDTH  = 0.110   # fully open RG2
+GRIPPER_CLOSE_WIDTH = 0.0     # fully closed
+GRIPPER_WAIT_SEC    = 1.0     # seconds to wait after a grip command
+
+
+# ===========================================================================
+# PHASE ENUM — the 8-step sequence for each brick
+# ===========================================================================
+
+class Phase(enum.Enum):
+    PICK_APPROACH  = 'pick_approach'    # move above brick
+    PICK_DESCEND   = 'pick_descend'     # lower to grab height
+    PICK_GRAB      = 'pick_grab'        # close gripper
+    PICK_RETRACT   = 'pick_retract'     # rise back up
+    PLACE_APPROACH = 'place_approach'   # move above slot
+    PLACE_DESCEND  = 'place_descend'    # lower to release height
+    PLACE_RELEASE  = 'place_release'    # open gripper
+    PLACE_RETRACT  = 'place_retract'    # rise back up
+
+
+_NEXT_PHASE = {
+    Phase.PICK_APPROACH:  Phase.PICK_DESCEND,
+    Phase.PICK_DESCEND:   Phase.PICK_GRAB,
+    Phase.PICK_GRAB:      Phase.PICK_RETRACT,
+    Phase.PICK_RETRACT:   Phase.PLACE_APPROACH,
+    Phase.PLACE_APPROACH: Phase.PLACE_DESCEND,
+    Phase.PLACE_DESCEND:  Phase.PLACE_RELEASE,
+    Phase.PLACE_RELEASE:  Phase.PLACE_RETRACT,
+    Phase.PLACE_RETRACT:  None,  # signals: advance to next brick
+}
 
 
 # ===========================================================================
@@ -49,15 +100,6 @@ from brick_interaction.brick_sorter import (
 #    Action server : /move_action   (moveit_msgs/action/MoveGroup)
 #    Provided by   : move_group node, launched alongside ur3e_motion_cpp
 #
-#    Verify live with:
-#      ros2 action list                   → should show /move_action
-#      ros2 action info /move_action      → shows server node + clients
-#
-#    Observable in logs once move_group is running:
-#      "Sending MoveGroup goal..."
-#      "MoveGroup goal accepted, executing..."
-#      "MoveGroup done — error_code=1 (SUCCESS)"
-#
 #    Current stub  : send_pose_goal() plans to SAFE_HOME_ANGLES (joint-space),
 #                    ignoring the Cartesian pose argument, so the pipeline can
 #                    be tested end-to-end without real brick coordinates.
@@ -65,25 +107,18 @@ from brick_interaction.brick_sorter import (
 #                    with a PositionConstraint + OrientationConstraint built
 #                    from the pose argument. No changes needed in this file.
 #
-# 2. VISION INPUT (brick detections from perception subsystem)
-#    Subscriber topic  : /brick_detections        (current stub)
-#    → change to       : /perception/brick_list   (when Danish's node is ready)
-#    Message type      : geometry_msgs/PoseArray  → <custom perception msg>
-#    Conversion        : update _bricks_to_use() to call
-#                        bricks_from_perception(self._latest_detections)
-#                        (see brick_sorter.py for the converter template)
+# 2. VISION INPUT — perception subsystem  *** WIRED ***
+#    Subscriber topic  : /brick_detections  (vision_msgs/Detection3DArray)
+#    Conversion        : bricks_from_detections() in brick_sorter.py converts
+#                        Detection3DArray → list[Brick]
+#    NOTE: Coordinates arrive in camera_color_optical_frame.
+#          A TF transform to the robot base frame may be needed once
+#          camera-to-robot calibration is finalized.
 #
-# 3. PICK POSE OUTPUT (publish pick target for visualisation / downstream use)
-#    Uncomment in __init__:
-#    PICK_POSE_TOPIC  = '/interaction/pick_pose'   # geometry_msgs/PoseStamped
-#    self._pick_pose_pub = self.create_publisher(PoseStamped, PICK_POSE_TOPIC, 10)
-#    Then call self._pick_pose_pub.publish(stamped_pose) in _send_pick()
-#
-# 4. PLACEMENT POSE OUTPUT (publish placement target for visualisation / downstream)
-#    Uncomment in __init__:
-#    PLACE_POSE_TOPIC = '/interaction/place_pose'  # geometry_msgs/PoseStamped
-#    self._place_pose_pub = self.create_publisher(PoseStamped, PLACE_POSE_TOPIC, 10)
-#    Then call self._place_pose_pub.publish(stamped_pose) in _send_place()
+# 3. GRIPPER — OnRobot RG2  *** WIRED ***
+#    Commands are published to /onrobot/finger_width_controller/commands
+#    via GripperClient (brick_interaction/gripper_client.py).
+#    Edit the constants above to adjust open/close widths and wait time.
 #
 # ===========================================================================
 
@@ -94,8 +129,6 @@ class BrickInteractionNode(Node):
         super().__init__('brick_interaction')
 
         # Latched QoS: new subscribers immediately receive the last published value.
-        # This means `ros2 topic echo /system_status --once` works even if the
-        # state hasn't changed since startup.
         latched_qos = QoSProfile(
             depth=1,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
@@ -109,34 +142,33 @@ class BrickInteractionNode(Node):
             String, '/brick_command', self._command_callback, 10
         )
         self.create_subscription(
-            PoseArray, '/brick_detections', self._detection_callback, 1
+            Detection3DArray, '/brick_detections', self._detection_callback, 1
         )
 
         # --- State machine ---
-        # on_state_change fires _publish_status on every real transition
         self._sm = StateMachine(on_state_change=self._publish_status)
 
         # --- Motion client ---
-        # on_done fires _on_motion_done when the MoveGroup action completes
-        self._motion = MotionClient(self, on_done=self._on_motion_done)
+        self._motion = MotionClient(self, on_done=self._on_step_done)
+
+        # --- Gripper client ---
+        self._gripper = GripperClient(
+            self,
+            on_done=self._on_step_done,
+            open_width=GRIPPER_OPEN_WIDTH,
+            close_width=GRIPPER_CLOSE_WIDTH,
+            wait_sec=GRIPPER_WAIT_SEC,
+        )
 
         # --- Perception cache ---
-        # Populated by _detection_callback when real perception publishes.
-        # TODO: update topic to /perception/brick_list and parse into Brick objects
-        #       when Danish's perception node is ready (see _detection_callback).
-        self._latest_detections: PoseArray | None = None
+        self._latest_detections: Detection3DArray | None = None
 
         # --- Brick pick queue ---
-        # Sorted list of Brick objects for the current cycle, closest first.
-        # Built in _start_pick_and_place_cycle() from either mock or real data.
         self._brick_queue: list[Brick] = []
         self._queue_index: int = 0
 
-        # --- Pick-and-place phase tracker ---
-        # Each brick requires two motion goals: 'pick' (move to brick) then
-        # 'place' (move to placement slot). _phase records which step is active
-        # so _on_motion_done knows what to do when the action completes.
-        self._phase: str = 'pick'  # 'pick' | 'place'
+        # --- Phase tracker ---
+        self._phase: Phase = Phase.PICK_APPROACH
 
         # Publish initial status so the GUI shows "idle" on startup
         self._publish_status(SystemState.IDLE)
@@ -163,23 +195,15 @@ class BrickInteractionNode(Node):
             )
             return
 
-        # If we just entered RUNNING (from IDLE or PAUSED), start the cycle.
-        # If we were already RUNNING (shouldn't happen, but guard anyway) skip.
         if self._sm.state == SystemState.RUNNING and prev_state != SystemState.RUNNING:
             self._start_pick_and_place_cycle()
 
-    def _detection_callback(self, msg: PoseArray) -> None:
-        """
-        Caches the latest brick detections from the perception subsystem.
-
-        TODO: When Danish's perception node is ready:
-          1. Change the subscriber topic to /perception/brick_list
-          2. Change the message type to the custom brick list message
-          3. Convert each entry to a Brick object and store as a list here
-          4. In _start_pick_and_place_cycle, use self._latest_detections
-             instead of MOCK_BRICKS
-        """
+    def _detection_callback(self, msg: Detection3DArray) -> None:
+        """Caches the latest brick detections from the perception subsystem."""
         self._latest_detections = msg
+        self.get_logger().info(
+            f'Received {len(msg.detections)} brick detection(s) from perception.'
+        )
 
     # ------------------------------------------------------------------ #
     # Pick-and-place cycle                                                 #
@@ -189,126 +213,134 @@ class BrickInteractionNode(Node):
         """
         Returns the brick list for this cycle.
 
-        Currently returns MOCK_BRICKS for demo purposes.
-        TODO: When perception is integrated, replace with:
-            return bricks_from_perception(self._latest_detections)
+        Uses real perception data if available, otherwise falls back
+        to MOCK_BRICKS for testing without the camera.
         """
+        if self._latest_detections is not None and self._latest_detections.detections:
+            bricks = bricks_from_detections(self._latest_detections)
+            self.get_logger().info(
+                f'Using {len(bricks)} brick(s) from perception.'
+            )
+            return bricks
+        self.get_logger().warn(
+            'No perception data — falling back to MOCK_BRICKS.'
+        )
         return list(MOCK_BRICKS)
 
-    def _pose_from_xyztheta(self, x: float, y: float, z: float, theta: float) -> Pose:
-        """
-        Build a geometry_msgs/Pose from position + yaw.
-        z is raised by 15 cm to approach from above.
-        Orientation is a pure z-axis rotation (quaternion from yaw only).
-        """
+    def _approach_pose(self, x: float, y: float, z: float, theta: float) -> Pose:
+        """Pose at safe approach height above the target."""
         pose = Pose()
         pose.position.x = x
         pose.position.y = y
-        pose.position.z = z + 0.15  # 15 cm clearance above surface
+        pose.position.z = z + Z_APPROACH
         pose.orientation.z = math.sin(theta / 2.0)
         pose.orientation.w = math.cos(theta / 2.0)
         return pose
 
-    def _brick_to_pose(self, brick: Brick) -> Pose:
-        """Convert a Brick's pick position into a motion goal Pose."""
-        return self._pose_from_xyztheta(brick.x, brick.y, brick.z, brick.theta)
-
-    def _slot_to_pose(self, slot: PlacementSlot) -> Pose:
-        """Convert a PlacementSlot's target position into a motion goal Pose."""
-        return self._pose_from_xyztheta(slot.x, slot.y, slot.z, slot.theta)
+    def _surface_pose(self, x: float, y: float, z: float, theta: float) -> Pose:
+        """Pose at grab/release height just above the surface."""
+        pose = Pose()
+        pose.position.x = x
+        pose.position.y = y
+        pose.position.z = z + Z_GRAB
+        pose.orientation.z = math.sin(theta / 2.0)
+        pose.orientation.w = math.cos(theta / 2.0)
+        return pose
 
     def _start_pick_and_place_cycle(self) -> None:
         """
         Loads the brick list, sorts by distance from the arm base, logs the
-        full pick order, and begins the first pick-and-place step.
-
-        Each brick goes through two motion goals:
-          1. _send_pick()  — move to the brick's detected position
-          2. _send_place() — move to the corresponding placement slot
-
-        TODO: This method is the natural insertion point for a py_trees
-              behaviour tree once gripper control is integrated.
+        full pick order, and begins the first 8-step sequence.
         """
         if self._sm.state != SystemState.RUNNING:
             return
 
-        # Sort bricks closest-to-furthest from the robot arm base
         bricks = sort_by_distance(self._bricks_to_use(), ROBOT_BASE)
         self._brick_queue = bricks
         self._queue_index = 0
 
-        # Log the full sorted pick order — visible to tutor during demo
         for line in format_sorted_summary(bricks, ROBOT_BASE):
             self.get_logger().info(line)
 
-        self._send_pick()
+        self._phase = Phase.PICK_APPROACH
+        self._execute_phase()
 
-    def _send_pick(self) -> None:
+    def _execute_phase(self) -> None:
         """
-        Phase 1 of pick-and-place: send the motion goal for the current
-        brick's detected position. Sets _phase = 'pick'.
+        Dispatches the current phase to the appropriate action
+        (arm motion or gripper command).
         """
         if self._sm.state != SystemState.RUNNING:
             return
 
-        self._phase = 'pick'
         brick = self._brick_queue[self._queue_index]
         slot = PLACEMENT_SLOTS[self._queue_index]
-        total = len(self._brick_queue)
-        self.get_logger().info(
-            f'[{self._queue_index + 1}/{total}] PICK  '
-            f'{brick.colour} {brick.size} '
-            f'at ({brick.x:.3f}, {brick.y:.3f})  →  '
-            f'PLACE at {slot.label} ({slot.x:.3f}, {slot.y:.3f})'
-        )
-        self._motion.send_pose_goal(self._brick_to_pose(brick))
+        idx_str = f'[{self._queue_index + 1}/{len(self._brick_queue)}]'
 
-    def _send_place(self) -> None:
-        """
-        Phase 2 of pick-and-place: send the motion goal for the placement
-        slot that corresponds to the current brick. Sets _phase = 'place'.
-        """
-        if self._sm.state != SystemState.RUNNING:
-            return
+        self.get_logger().info(f'{idx_str} {self._phase.value}')
 
-        self._phase = 'place'
-        slot = PLACEMENT_SLOTS[self._queue_index]
-        self.get_logger().info(
-            f'[{self._queue_index + 1}/{len(self._brick_queue)}] '
-            f'PLACE → {slot.label} ({slot.x:.3f}, {slot.y:.3f})'
-        )
-        self._motion.send_pose_goal(self._slot_to_pose(slot))
+        if self._phase == Phase.PICK_APPROACH:
+            self._motion.send_pose_goal(
+                self._approach_pose(brick.x, brick.y, brick.z, brick.theta))
+
+        elif self._phase == Phase.PICK_DESCEND:
+            self._motion.send_pose_goal(
+                self._surface_pose(brick.x, brick.y, brick.z, brick.theta))
+
+        elif self._phase == Phase.PICK_GRAB:
+            self._gripper.close()
+
+        elif self._phase == Phase.PICK_RETRACT:
+            self._motion.send_pose_goal(
+                self._approach_pose(brick.x, brick.y, brick.z, brick.theta))
+
+        elif self._phase == Phase.PLACE_APPROACH:
+            self._motion.send_pose_goal(
+                self._approach_pose(slot.x, slot.y, slot.z, slot.theta))
+
+        elif self._phase == Phase.PLACE_DESCEND:
+            self._motion.send_pose_goal(
+                self._surface_pose(slot.x, slot.y, slot.z, slot.theta))
+
+        elif self._phase == Phase.PLACE_RELEASE:
+            self._gripper.open()
+
+        elif self._phase == Phase.PLACE_RETRACT:
+            self._motion.send_pose_goal(
+                self._approach_pose(slot.x, slot.y, slot.z, slot.theta))
 
     # ------------------------------------------------------------------ #
-    # Motion completion callback                                           #
+    # Step completion callback                                             #
     # ------------------------------------------------------------------ #
 
-    def _on_motion_done(self, success: bool) -> None:
+    def _on_step_done(self, success: bool) -> None:
         """
-        Called by MotionClient when the MoveGroup action finishes.
+        Unified callback for both MotionClient and GripperClient.
 
-        Two-phase logic:
-          pick  succeeded → send placement goal for the same brick
-          place succeeded → advance to the next brick (or mark complete)
-          either failed   → set error and stop the cycle
+        On success: advance to the next phase, or to the next brick if
+        the 8-step sequence is complete.
+        On failure: set error state and stop the cycle.
         """
         if not success:
             self.get_logger().error(
-                f'Motion failed during {self._phase} of brick '
+                f'Step failed during {self._phase.value} of brick '
                 f'{self._queue_index + 1}/{len(self._brick_queue)} '
                 f'— stopping cycle.'
             )
             self._sm.set_error()
             return
 
-        if self._phase == 'pick':
-            # Pick motion done — now move to the placement slot
-            self._send_place()
+        next_phase = _NEXT_PHASE[self._phase]
+
+        if next_phase is not None:
+            self._phase = next_phase
+            self._execute_phase()
         else:
-            # Place motion done — advance to the next brick
+            # All 8 steps complete for this brick — advance to next
             self._queue_index += 1
             if self._queue_index < len(self._brick_queue):
-                self._send_pick()
+                self._phase = Phase.PICK_APPROACH
+                self._execute_phase()
             else:
                 self.get_logger().info(
                     f'All {len(self._brick_queue)} bricks placed — cycle complete.'
