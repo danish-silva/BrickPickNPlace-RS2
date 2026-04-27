@@ -1,1 +1,0 @@
-/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.zsh

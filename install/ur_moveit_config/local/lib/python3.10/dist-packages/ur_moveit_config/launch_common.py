@@ -1,1 +1,0 @@
-/home/hari/git/BrickPickNPlace-RS2/src/ur_moveit_config/ur_moveit_config/launch_common.py
