@@ -1,1 +1,1 @@
-/home/b/ws_moveit2/src/ur_moveit_config/ur_moveit_config/__init__.py
+/home/hari/git/BrickPickNPlace-RS2/src/ur_moveit_config/ur_moveit_config/__init__.py

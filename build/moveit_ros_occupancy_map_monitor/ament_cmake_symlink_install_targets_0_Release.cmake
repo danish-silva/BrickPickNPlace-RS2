@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/moveit_ros_occupancy_map_monitor/moveit_ros_occupancy_map_server" "TARGETS" "moveit_ros_occupancy_map_server" "DESTINATION" "lib/moveit_ros_occupancy_map_monitor")

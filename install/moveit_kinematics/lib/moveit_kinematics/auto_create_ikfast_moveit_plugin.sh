@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_kinematics/ikfast_kinematics_plugin/scripts/auto_create_ikfast_moveit_plugin.sh

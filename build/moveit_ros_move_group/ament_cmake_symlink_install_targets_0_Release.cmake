@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/moveit_ros_move_group/move_group" "/home/b/ws_moveit2/build/moveit_ros_move_group/list_move_group_capabilities" "TARGETS" "move_group" "list_move_group_capabilities" "RUNTIME_DESTINATION" "lib/moveit_ros_move_group")

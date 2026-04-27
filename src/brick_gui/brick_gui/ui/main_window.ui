@@ -3,13 +3,13 @@
   Main window layout — LeBrick n' Place Execution Controller.
 
   Required widget objectNames (gui_node.py references these by name):
-    startButton      QPushButton  — publishes 'start' to /brick_command
-    pauseButton      QPushButton  — publishes 'pause' to /brick_command
-    stopButton       QPushButton  — publishes 'stop'  to /brick_command
-    statusLabel      QLabel       — state badge (idle/running/paused/...)
-    lastUpdateLabel  QLabel       — time of last status update
-    currentTaskLabel QLabel       — human-readable current task
-    logTextEdit      QTextEdit    — scrollable execution log
+    startButton        QPushButton  — publishes 'start' to /brick_command
+    pauseButton        QPushButton  — publishes 'pause' to /brick_command
+    stopButton         QPushButton  — publishes 'stop'  to /brick_command
+    statusLabel        QLabel       — state badge (idle/running/paused/...)
+    lastUpdateLabel    QLabel       — time of last status update
+    currentTaskLabel   QLabel       — human-readable current task
+    logTextEdit        QTextEdit    — scrollable execution log
 -->
 <ui version="4.0">
  <class>MainWindow</class>

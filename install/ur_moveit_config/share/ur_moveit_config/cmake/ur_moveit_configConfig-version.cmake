@@ -1,1 +1,1 @@
-/home/b/ws_moveit2/build/ur_moveit_config/ament_cmake_core/ur_moveit_configConfig-version.cmake
+/home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config/ament_cmake_core/ur_moveit_configConfig-version.cmake

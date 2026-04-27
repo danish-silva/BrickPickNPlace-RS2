@@ -1,3 +1,0 @@
-/home/b/ws_moveit2/install/moveit_setup_framework/lib/libmoveit_setup_framework.so
-/home/b/ws_moveit2/install/moveit_setup_framework/share/moveit_setup_framework/cmake/export_moveit_setup_frameworkExport.cmake
-/home/b/ws_moveit2/install/moveit_setup_framework/share/moveit_setup_framework/cmake/export_moveit_setup_frameworkExport-release.cmake

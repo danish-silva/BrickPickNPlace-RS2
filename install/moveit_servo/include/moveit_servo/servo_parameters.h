@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_ros/moveit_servo/include/moveit_servo/servo_parameters.h

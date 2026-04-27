@@ -19,7 +19,8 @@ Responsibilities:
 
 Topics:
   Subscribes:  /brick_command        (std_msgs/String)              <- brick_gui
-  Subscribes:  /brick_detections     (vision_msgs/Detection3DArray) <- perception
+  Subscribes:  /brick_detector/brick_pose (geometry_msgs/PoseStamped) <- brick_vision
+  Subscribes:  /brick_detections     (vision_msgs/Detection3DArray) <- future perception
   Publishes:   /system_status        (std_msgs/String)              -> brick_gui
 """
 
@@ -30,7 +31,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_msgs.msg import String
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped
 from vision_msgs.msg import Detection3DArray
 
 from brick_interaction.state_machine import StateMachine, SystemState
@@ -44,6 +45,7 @@ from brick_interaction.brick_sorter import (
     ROBOT_BASE,
     sort_by_distance,
     format_sorted_summary,
+    brick_from_pose_stamped,
     bricks_from_detections,
 )
 
@@ -59,7 +61,12 @@ Z_GRAB     = 0.005      # height above surface for grab / release
 # Gripper finger widths (metres) — adjust for brick size
 GRIPPER_OPEN_WIDTH  = 0.110   # fully open RG2
 GRIPPER_CLOSE_WIDTH = 0.0     # fully closed
-GRIPPER_WAIT_SEC    = 1.0     # seconds to wait after a grip command
+GRIPPER_SPEED       = 0.05    # m/s — how fast the fingers travel
+GRIPPER_UPDATE_HZ   = 20.0    # publish rate of intermediate widths
+
+# Current output from brick_vision's node name + private topic "~/brick_pose".
+VISION_BRICK_POSE_TOPIC = '/brick_detector/brick_pose'
+VISION_DETECTIONS_TOPIC = '/brick_detections'
 
 
 # ===========================================================================
@@ -108,7 +115,10 @@ _NEXT_PHASE = {
 #                    from the pose argument. No changes needed in this file.
 #
 # 2. VISION INPUT — perception subsystem  *** WIRED ***
-#    Subscriber topic  : /brick_detections  (vision_msgs/Detection3DArray)
+#    Current topic     : /brick_detector/brick_pose (geometry_msgs/PoseStamped)
+#                        Published by brick_vision. Contains the best brick's
+#                        position and angle, but not colour/size metadata.
+#    Future topic      : /brick_detections  (vision_msgs/Detection3DArray)
 #    Conversion        : bricks_from_detections() in brick_sorter.py converts
 #                        Detection3DArray → list[Brick]
 #    NOTE: Coordinates arrive in camera_color_optical_frame.
@@ -116,7 +126,7 @@ _NEXT_PHASE = {
 #          camera-to-robot calibration is finalized.
 #
 # 3. GRIPPER — OnRobot RG2  *** WIRED ***
-#    Commands are published to /onrobot/finger_width_controller/commands
+#    Commands are published to /finger_width_controller/commands
 #    via GripperClient (brick_interaction/gripper_client.py).
 #    Edit the constants above to adjust open/close widths and wait time.
 #
@@ -142,7 +152,10 @@ class BrickInteractionNode(Node):
             String, '/brick_command', self._command_callback, 10
         )
         self.create_subscription(
-            Detection3DArray, '/brick_detections', self._detection_callback, 1
+            PoseStamped, VISION_BRICK_POSE_TOPIC, self._vision_pose_callback, 10
+        )
+        self.create_subscription(
+            Detection3DArray, VISION_DETECTIONS_TOPIC, self._detection_callback, 1
         )
 
         # --- State machine ---
@@ -157,11 +170,13 @@ class BrickInteractionNode(Node):
             on_done=self._on_step_done,
             open_width=GRIPPER_OPEN_WIDTH,
             close_width=GRIPPER_CLOSE_WIDTH,
-            wait_sec=GRIPPER_WAIT_SEC,
+            speed=GRIPPER_SPEED,
+            update_hz=GRIPPER_UPDATE_HZ,
         )
 
         # --- Perception cache ---
         self._latest_detections: Detection3DArray | None = None
+        self._latest_vision_pose: PoseStamped | None = None
 
         # --- Brick pick queue ---
         self._brick_queue: list[Brick] = []
@@ -181,11 +196,17 @@ class BrickInteractionNode(Node):
 
     def _command_callback(self, msg: String) -> None:
         """
-        Receives 'start', 'pause', or 'stop' from /brick_command.
-        Routes to the state machine and kicks off the pick-and-place cycle
-        when transitioning into RUNNING.
+        Receives commands from /brick_command:
+            'start' / 'pause' / 'stop'   → state machine
+            'gripper_open' / 'gripper_close' → manual gripper jog (only
+            allowed outside RUNNING so the cycle isn't disrupted).
         """
         command = msg.data.strip().lower()
+
+        if command in ('gripper_open', 'gripper_close'):
+            self._handle_manual_gripper(command)
+            return
+
         prev_state = self._sm.state
 
         valid = self._sm.handle_command(command)
@@ -198,11 +219,34 @@ class BrickInteractionNode(Node):
         if self._sm.state == SystemState.RUNNING and prev_state != SystemState.RUNNING:
             self._start_pick_and_place_cycle()
 
+    def _handle_manual_gripper(self, command: str) -> None:
+        """Drive the gripper from the GUI without touching the cycle state."""
+        if self._sm.state == SystemState.RUNNING:
+            self.get_logger().warn(
+                f'Manual gripper command "{command}" ignored while cycle is running.'
+            )
+            return
+        if command == 'gripper_open':
+            self._gripper.manual_open()
+        else:
+            self._gripper.manual_close()
+
     def _detection_callback(self, msg: Detection3DArray) -> None:
         """Caches the latest brick detections from the perception subsystem."""
         self._latest_detections = msg
         self.get_logger().info(
             f'Received {len(msg.detections)} brick detection(s) from perception.'
+        )
+
+    def _vision_pose_callback(self, msg: PoseStamped) -> None:
+        """Caches the latest best-brick pose published by brick_vision."""
+        self._latest_vision_pose = msg
+        brick = brick_from_pose_stamped(msg)
+        self.get_logger().info(
+            'Received brick_vision pose: '
+            f'frame={msg.header.frame_id or "unknown"} '
+            f'pos=({brick.x:.3f}, {brick.y:.3f}, {brick.z:.3f}) '
+            f'theta={math.degrees(brick.theta):.1f} deg'
         )
 
     # ------------------------------------------------------------------ #
@@ -222,6 +266,12 @@ class BrickInteractionNode(Node):
                 f'Using {len(bricks)} brick(s) from perception.'
             )
             return bricks
+        if self._latest_vision_pose is not None:
+            self.get_logger().info(
+                'Using latest brick_vision pose. Colour/size are unavailable '
+                'on /brick_detector/brick_pose and will be marked unknown.'
+            )
+            return [brick_from_pose_stamped(self._latest_vision_pose)]
         self.get_logger().warn(
             'No perception data — falling back to MOCK_BRICKS.'
         )

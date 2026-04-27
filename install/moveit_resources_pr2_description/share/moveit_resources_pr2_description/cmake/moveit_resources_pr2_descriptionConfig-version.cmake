@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/build/moveit_resources_pr2_description/ament_cmake_core/moveit_resources_pr2_descriptionConfig-version.cmake

@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_setup_assistant/moveit_setup_assistant/include/moveit_setup_assistant/setup_assistant_widget.hpp

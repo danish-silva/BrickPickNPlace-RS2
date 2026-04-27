@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2_tutorials/doc/how_to_guides/chomp_planner/launch/chomp_demo.launch.py

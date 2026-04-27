@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/moveit_ros_benchmarks/moveit_run_benchmark" "/home/b/ws_moveit2/build/moveit_ros_benchmarks/moveit_combine_predefined_poses_benchmark" "TARGETS" "moveit_run_benchmark" "moveit_combine_predefined_poses_benchmark" "DESTINATION" "lib/moveit_ros_benchmarks")

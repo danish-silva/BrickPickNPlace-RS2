@@ -1,1 +1,1 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/b/ws_moveit2/build/ur3e_motion_cpp/move_to_position" "/home/b/ws_moveit2/build/ur3e_motion_cpp/move_to_position_testing" "TARGETS" "move_to_position" "move_to_position_testing" "DESTINATION" "lib/ur3e_motion_cpp")
+ament_cmake_symlink_install_targets("TARGET_FILES" "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/move_to_position" "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/move_to_position_testing" "TARGETS" "move_to_position" "move_to_position_testing" "DESTINATION" "lib/ur3e_motion_cpp")

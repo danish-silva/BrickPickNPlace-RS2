@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/build/launch_param_builder/example/example_node.py

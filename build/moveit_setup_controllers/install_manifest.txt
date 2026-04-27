@@ -1,3 +1,0 @@
-/home/b/ws_moveit2/install/moveit_setup_controllers/lib/libmoveit_setup_controllers.so
-/home/b/ws_moveit2/install/moveit_setup_controllers/share/moveit_setup_controllers/cmake/export_moveit_setup_controllersExport.cmake
-/home/b/ws_moveit2/install/moveit_setup_controllers/share/moveit_setup_controllers/cmake/export_moveit_setup_controllersExport-release.cmake

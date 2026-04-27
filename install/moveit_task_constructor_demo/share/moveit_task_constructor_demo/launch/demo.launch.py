@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit_task_constructor/demo/launch/demo.launch.py

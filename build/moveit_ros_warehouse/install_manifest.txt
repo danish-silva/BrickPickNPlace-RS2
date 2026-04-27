@@ -1,4 +1,0 @@
-/home/b/ws_moveit2/install/moveit_ros_warehouse/lib/libmoveit_warehouse.so.2.5.9
-/home/b/ws_moveit2/install/moveit_ros_warehouse/lib/libmoveit_warehouse.so
-/home/b/ws_moveit2/install/moveit_ros_warehouse/share/moveit_ros_warehouse/cmake/export_moveit_ros_warehouseExport.cmake
-/home/b/ws_moveit2/install/moveit_ros_warehouse/share/moveit_ros_warehouse/cmake/export_moveit_ros_warehouseExport-release.cmake

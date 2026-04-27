@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_py/moveit/core/controller_manager.pyi

@@ -1,1 +1,1 @@
-/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh
+/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh

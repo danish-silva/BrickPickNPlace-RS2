@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/b/ws_moveit2/src/ur_moveit_config
+CMAKE_SOURCE_DIR = /home/hari/git/BrickPickNPlace-RS2/src/ur_moveit_config
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/b/ws_moveit2/build/ur_moveit_config
+CMAKE_BINARY_DIR = /home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config
 
 # Utility rule file for uninstall.
 
@@ -78,6 +78,6 @@ CMakeFiles/uninstall.dir/clean:
 .PHONY : CMakeFiles/uninstall.dir/clean
 
 CMakeFiles/uninstall.dir/depend:
-	cd /home/b/ws_moveit2/build/ur_moveit_config && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/b/ws_moveit2/src/ur_moveit_config /home/b/ws_moveit2/src/ur_moveit_config /home/b/ws_moveit2/build/ur_moveit_config /home/b/ws_moveit2/build/ur_moveit_config /home/b/ws_moveit2/build/ur_moveit_config/CMakeFiles/uninstall.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/hari/git/BrickPickNPlace-RS2/src/ur_moveit_config /home/hari/git/BrickPickNPlace-RS2/src/ur_moveit_config /home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config /home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config /home/hari/git/BrickPickNPlace-RS2/build/ur_moveit_config/CMakeFiles/uninstall.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/uninstall.dir/depend
 

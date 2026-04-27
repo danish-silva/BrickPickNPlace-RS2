@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/build/moveit_chomp_optimizer_adapter/ament_cmake_environment_hooks/local_setup.sh

@@ -23,7 +23,7 @@ function(ament_cmake_symlink_install_directory cmake_current_source_dir)
 
   # make destination absolute path and ensure that it exists
   if(NOT IS_ABSOLUTE "${ARG_DESTINATION}")
-    set(ARG_DESTINATION "/home/b/ws_moveit2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
+    set(ARG_DESTINATION "/home/hari/git/BrickPickNPlace-RS2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
   endif()
   if(NOT EXISTS "${ARG_DESTINATION}")
     file(MAKE_DIRECTORY "${ARG_DESTINATION}")
@@ -128,7 +128,7 @@ function(ament_cmake_symlink_install_files cmake_current_source_dir)
 
   # make destination an absolute path and ensure that it exists
   if(NOT IS_ABSOLUTE "${ARG_DESTINATION}")
-    set(ARG_DESTINATION "/home/b/ws_moveit2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
+    set(ARG_DESTINATION "/home/hari/git/BrickPickNPlace-RS2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
   endif()
   if(NOT EXISTS "${ARG_DESTINATION}")
     file(MAKE_DIRECTORY "${ARG_DESTINATION}")
@@ -186,7 +186,7 @@ function(ament_cmake_symlink_install_programs cmake_current_source_dir)
 
   # make destination an absolute path and ensure that it exists
   if(NOT IS_ABSOLUTE "${ARG_DESTINATION}")
-    set(ARG_DESTINATION "/home/b/ws_moveit2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
+    set(ARG_DESTINATION "/home/hari/git/BrickPickNPlace-RS2/install/ur3e_motion_cpp/${ARG_DESTINATION}")
   endif()
   if(NOT EXISTS "${ARG_DESTINATION}")
     file(MAKE_DIRECTORY "${ARG_DESTINATION}")
@@ -256,7 +256,7 @@ function(ament_cmake_symlink_install_targets)
 
     # make destination an absolute path and ensure that it exists
     if(NOT IS_ABSOLUTE "${destination}")
-      set(destination "/home/b/ws_moveit2/install/ur3e_motion_cpp/${destination}")
+      set(destination "/home/hari/git/BrickPickNPlace-RS2/install/ur3e_motion_cpp/${destination}")
     endif()
     if(NOT EXISTS "${destination}")
       file(MAKE_DIRECTORY "${destination}")
@@ -316,49 +316,49 @@ message(STATUS "Execute custom install script")
 # begin of custom install code
 
 # install("TARGETS" "move_to_position" "move_to_position_testing" "DESTINATION" "lib/ur3e_motion_cpp")
-include("/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_symlink_install_targets_0_${CMAKE_INSTALL_CONFIG_NAME}.cmake")
+include("/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_symlink_install_targets_0_${CMAKE_INSTALL_CONFIG_NAME}.cmake")
 
 # install(DIRECTORY "launch" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_directory("/home/b/ws_moveit2/src/ur3e_motion_cpp" DIRECTORY "launch" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_directory("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" DIRECTORY "launch" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/package_run_dependencies/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/package_run_dependencies")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/package_run_dependencies/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/package_run_dependencies")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/package_run_dependencies/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/package_run_dependencies")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/package_run_dependencies/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/package_run_dependencies")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/parent_prefix_path/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/parent_prefix_path")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/parent_prefix_path/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/parent_prefix_path")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/parent_prefix_path/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/parent_prefix_path")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/parent_prefix_path/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/parent_prefix_path")
 
 # install(FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/ament_prefix_path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/ament_prefix_path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/ament_prefix_path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/ament_prefix_path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/ament_prefix_path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/ament_prefix_path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/ament_prefix_path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
 
 # install(FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/opt/ros/humble/share/ament_cmake_core/cmake/environment_hooks/environment/path.sh" "DESTINATION" "share/ur3e_motion_cpp/environment")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/path.dsv" "DESTINATION" "share/ur3e_motion_cpp/environment")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.bash" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.bash" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.bash" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.bash" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.sh" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.zsh" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.zsh" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.zsh" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.zsh" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.dsv" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.dsv" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.dsv" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/local_setup.dsv" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/package.dsv" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/package.dsv" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/package.dsv" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_environment_hooks/package.dsv" "DESTINATION" "share/ur3e_motion_cpp")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/packages/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/packages")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/packages/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/packages")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/packages/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/packages")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_index/share/ament_index/resource_index/packages/ur3e_motion_cpp" "DESTINATION" "share/ament_index/resource_index/packages")
 
-# install(FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig.cmake" "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig-version.cmake" "DESTINATION" "share/ur3e_motion_cpp/cmake")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig.cmake" "/home/b/ws_moveit2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig-version.cmake" "DESTINATION" "share/ur3e_motion_cpp/cmake")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig.cmake" "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig-version.cmake" "DESTINATION" "share/ur3e_motion_cpp/cmake")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig.cmake" "/home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/ament_cmake_core/ur3e_motion_cppConfig-version.cmake" "DESTINATION" "share/ur3e_motion_cpp/cmake")
 
-# install(FILES "/home/b/ws_moveit2/src/ur3e_motion_cpp/package.xml" "DESTINATION" "share/ur3e_motion_cpp")
-ament_cmake_symlink_install_files("/home/b/ws_moveit2/src/ur3e_motion_cpp" FILES "/home/b/ws_moveit2/src/ur3e_motion_cpp/package.xml" "DESTINATION" "share/ur3e_motion_cpp")
+# install(FILES "/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp/package.xml" "DESTINATION" "share/ur3e_motion_cpp")
+ament_cmake_symlink_install_files("/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp" FILES "/home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp/package.xml" "DESTINATION" "share/ur3e_motion_cpp")

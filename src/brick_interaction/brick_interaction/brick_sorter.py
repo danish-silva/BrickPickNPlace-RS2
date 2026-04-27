@@ -92,7 +92,7 @@ PLACEMENT_SLOTS = [
 
 
 # ===========================================================================
-# VISION INTEGRATION — converts Detection3DArray → list[Brick]
+# VISION INTEGRATION — converts perception messages → list[Brick]
 # ===========================================================================
 # Perception publishes: vision_msgs/Detection3DArray
 #   - det.bbox.center.position   → x, y, z (metres, camera_color_optical_frame)
@@ -100,6 +100,12 @@ PLACEMENT_SLOTS = [
 #   - det.bbox.size              → x (length), y (width), z (height) in metres
 #   - det.results[0].hypothesis.class_id → colour string ("red", "blue", …)
 #   - det.results[0].hypothesis.score    → detection confidence
+#
+# Current brick_vision publishes: geometry_msgs/PoseStamped
+#   - /brick_detector/brick_pose
+#   - pose.position      → x, y, z (metres, camera_color_optical_frame)
+#   - pose.orientation   → yaw derived from the detected brick angle
+#   - colour/size are not present in this message, so they are marked unknown
 # ===========================================================================
 
 
@@ -156,6 +162,25 @@ def bricks_from_detections(msg) -> list[Brick]:
             size=_size_label_from_bbox(det.bbox.size),
         ))
     return bricks
+
+
+def brick_from_pose_stamped(msg) -> Brick:
+    """
+    Convert the current brick_vision PoseStamped output into a Brick object.
+
+    The current /brick_detector/brick_pose topic contains the best detected
+    brick pose only. It does not include colour or brick size metadata yet.
+    """
+    p = msg.pose.position
+    q = msg.pose.orientation
+    return Brick(
+        x=p.x,
+        y=p.y,
+        z=p.z,
+        theta=_yaw_from_quaternion(q),
+        colour='unknown',
+        size='unknown',
+    )
 
 
 def _xy_distance(brick: Brick, reference: tuple) -> float:

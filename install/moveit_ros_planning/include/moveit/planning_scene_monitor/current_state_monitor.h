@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_ros/planning/planning_scene_monitor/include/moveit/planning_scene_monitor/current_state_monitor.h

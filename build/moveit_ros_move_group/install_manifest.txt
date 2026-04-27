@@ -1,6 +1,0 @@
-/home/b/ws_moveit2/install/moveit_ros_move_group/lib/libmoveit_move_group_default_capabilities.so.2.5.9
-/home/b/ws_moveit2/install/moveit_ros_move_group/lib/libmoveit_move_group_default_capabilities.so
-/home/b/ws_moveit2/install/moveit_ros_move_group/lib/libmoveit_move_group_capabilities_base.so.2.5.9
-/home/b/ws_moveit2/install/moveit_ros_move_group/lib/libmoveit_move_group_capabilities_base.so
-/home/b/ws_moveit2/install/moveit_ros_move_group/share/moveit_ros_move_group/cmake/export_moveit_ros_move_groupExport.cmake
-/home/b/ws_moveit2/install/moveit_ros_move_group/share/moveit_ros_move_group/cmake/export_moveit_ros_move_groupExport-release.cmake

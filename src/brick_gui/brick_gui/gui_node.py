@@ -14,13 +14,13 @@ Topics:
 
 Qt Designer layout file: brick_gui/ui/main_window.ui
   Required widget objectNames:
-    startButton      (QPushButton)
-    pauseButton      (QPushButton)
-    stopButton       (QPushButton)
-    statusLabel      (QLabel)       — state badge
-    lastUpdateLabel  (QLabel)       — last update time
-    currentTaskLabel (QLabel)       — human-readable task
-    logTextEdit      (QTextEdit)    — execution log
+    startButton        (QPushButton)
+    pauseButton        (QPushButton)
+    stopButton         (QPushButton)
+    statusLabel        (QLabel)       — state badge
+    lastUpdateLabel    (QLabel)       — last update time
+    currentTaskLabel   (QLabel)       — human-readable task
+    logTextEdit        (QTextEdit)    — execution log
   You can redesign the layout freely in Qt Designer — just keep those names.
 """
 

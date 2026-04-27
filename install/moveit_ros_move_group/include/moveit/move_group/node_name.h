@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_ros/move_group/include/moveit/move_group/node_name.h

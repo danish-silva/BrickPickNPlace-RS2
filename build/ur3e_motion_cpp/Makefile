@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/b/ws_moveit2/src/ur3e_motion_cpp
+CMAKE_SOURCE_DIR = /home/hari/git/BrickPickNPlace-RS2/src/ur3e_motion_cpp
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/b/ws_moveit2/build/ur3e_motion_cpp
+CMAKE_BINARY_DIR = /home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -142,9 +142,9 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/b/ws_moveit2/build/ur3e_motion_cpp/CMakeFiles /home/b/ws_moveit2/build/ur3e_motion_cpp//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/CMakeFiles /home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/b/ws_moveit2/build/ur3e_motion_cpp/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/hari/git/BrickPickNPlace-RS2/build/ur3e_motion_cpp/CMakeFiles 0
 .PHONY : all
 
 # The main clean target

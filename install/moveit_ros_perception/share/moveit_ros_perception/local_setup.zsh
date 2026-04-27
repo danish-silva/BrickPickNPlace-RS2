@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/build/moveit_ros_perception/ament_cmake_environment_hooks/local_setup.zsh

@@ -1,1 +1,0 @@
-/home/b/ws_moveit2/src/moveit2/moveit_setup_assistant/moveit_setup_app_plugins/include/moveit_setup_app_plugins/perception_config.hpp
