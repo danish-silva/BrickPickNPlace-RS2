@@ -1,6 +1,0 @@
-Invoking command in '/home/b/ws_moveit2/src/build/srdfdom': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/b/ws_moveit2/src/srdfdom -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/src/install/srdfdom
-Invoked command in '/home/b/ws_moveit2/src/build/srdfdom' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/b/ws_moveit2/src/srdfdom -DCMAKE_INSTALL_PREFIX=/home/b/ws_moveit2/src/install/srdfdom
-Invoking command in '/home/b/ws_moveit2/src/build/srdfdom': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/b/ws_moveit2/src/build/srdfdom -- -j12 -l12
-Invoked command in '/home/b/ws_moveit2/src/build/srdfdom' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/b/ws_moveit2/src/build/srdfdom -- -j12 -l12
-Invoking command in '/home/b/ws_moveit2/src/build/srdfdom': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/b/ws_moveit2/src/build/srdfdom
-Invoked command in '/home/b/ws_moveit2/src/build/srdfdom' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/b/ws_moveit2/src/build/srdfdom
