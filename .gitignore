@@ -17,6 +17,9 @@ src/moveit_visual_tools/
 src/rosparam_shortcuts/
 src/srdfdom/
 src/launch_param_builder/
+src/onrobot_description/
+src/onrobot_driver/
+src/ur_onrobot/
 
 # Nested build artifacts
 src/build/

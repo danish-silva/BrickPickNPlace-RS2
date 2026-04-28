@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
 """
-Brick Detector - Detects 4x2 LEGO bricks AND tracks free build-zone slots.
+Brick Detector - Detects 4x2 LEGO bricks using Intel RealSense + OpenCV.
 
 Brick specifications:
   - 4x2 studs, 100mm x 50mm footprint
-  - Stud diameter: 15mm, pitch (centre-to-centre): 25mm
+  - Stud diameter: 15mm
   - Colour detection: black, red, orange, yellow, green, blue, purple
   - Hybrid approach: colour segmentation (primary) + stud verification (secondary)
-
-Build zone:
-  - 12 (cols) x 14 (rows) studs at 25mm pitch
-  - Calibrated by clicking the centres of the top-left and bottom-right studs
-  - Free studs and valid 4x2 placement slots (with a 1-stud gap rule between
-    bricks) are computed each frame and published.
 
 Usage:
   Standalone:  python3 brick_detector.py
   ROS2 node:   ros2 run brick_vision brick_detector
-
-Keys (preview window):
-  q  quit
-  c  re-calibrate workspace ROI
-  b  re-calibrate build-zone (click TL stud then BR stud)
-  s  save snapshot
 """
 
 import numpy as np
@@ -73,14 +61,6 @@ COLOUR_RANGES = [
 BLACK_V_MAX = 60
 BLACK_S_MAX = 120
 
-# ── Build-zone grid ───────────────────────────────────────────────────────
-BUILD_GRID_COLS      = 12       # number of stud columns on the build plate
-BUILD_GRID_ROWS      = 14       # number of stud rows on the build plate
-STUD_PITCH_M         = 0.025    # 25 mm centre-to-centre spacing
-PLACEMENT_GAP_STUDS  = 1        # required free stud border between placed bricks
-BRICK_STUDS_LONG     = 4        # studs along the brick's long axis (100 mm)
-BRICK_STUDS_SHORT    = 2        # studs along the brick's short axis (50 mm)
-
 # ── Calibration file ──────────────────────────────────────────────────────
 # Canonical location is the user's home dir so it survives `colcon build` and
 # works from both standalone and `ros2 run`. The legacy in-repo path is kept
@@ -100,15 +80,6 @@ class WorkspaceCalibration:
         self.roi = None          # (x, y, w, h) in pixel coords
         self.plane_depth = None  # average depth of the workspace surface (m)
         self.calibrated = False
-        # Build-zone stud grid: pixel centres of the corner studs.
-        # The full 12x14 grid is interpolated linearly between these two points,
-        # which assumes the grid is approximately axis-aligned with the image.
-        self.build_zone_tl = None  # (px, py) of stud (row=0, col=0)
-        self.build_zone_br = None  # (px, py) of stud (row=ROWS-1, col=COLS-1)
-
-    @property
-    def has_build_zone(self):
-        return self.build_zone_tl is not None and self.build_zone_br is not None
 
     def calibrate_interactive(self, color_image, depth_frame):
         """Let the user draw a rectangle over the workspace area."""
@@ -159,64 +130,10 @@ class WorkspaceCalibration:
         print(f"[Calibration] ROI={self.roi}, surface depth={self.plane_depth:.3f} m")
         return True
 
-    def calibrate_build_zone(self, color_image):
-        """Click the centre of the TL stud, then the centre of the BR stud."""
-        clone = color_image.copy()
-        points = []
-        instructions = [
-            f"Click the CENTRE of the TOP-LEFT stud (row 0, col 0)",
-            f"Click the CENTRE of the BOTTOM-RIGHT stud "
-            f"(row {BUILD_GRID_ROWS-1}, col {BUILD_GRID_COLS-1})",
-        ]
-        win = "Build-Zone Calibration"
-
-        def render():
-            img = clone.copy()
-            for (px, py) in points:
-                cv2.circle(img, (px, py), 6, (0, 255, 255), 2)
-                cv2.drawMarker(img, (px, py), (0, 255, 255),
-                               cv2.MARKER_CROSS, 12, 1)
-            if len(points) == 2:
-                cv2.line(img, points[0], points[1], (0, 255, 255), 1)
-            msg = instructions[len(points)] if len(points) < 2 \
-                  else "ENTER to accept, ESC to cancel"
-            cv2.putText(img, msg, (10, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            cv2.imshow(win, img)
-
-        def on_mouse(event, x, y, flags, param):
-            if event == cv2.EVENT_LBUTTONDOWN and len(points) < 2:
-                points.append((x, y))
-                render()
-
-        cv2.namedWindow(win)
-        cv2.setMouseCallback(win, on_mouse)
-        render()
-        print("[Build Zone] Click TL stud → click BR stud → press ENTER")
-
-        while True:
-            key = cv2.waitKey(30) & 0xFF
-            if key == 13 and len(points) == 2:  # ENTER
-                break
-            if key == 27:  # ESC
-                cv2.destroyWindow(win)
-                return False
-
-        self.build_zone_tl = tuple(points[0])
-        self.build_zone_br = tuple(points[1])
-        cv2.destroyWindow(win)
-        print(f"[Build Zone] TL={self.build_zone_tl}  BR={self.build_zone_br}")
-        return True
-
     def save(self, path=None):
         path = path or CALIBRATION_FILE
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        data = {
-            "roi":           self.roi,
-            "plane_depth":   self.plane_depth,
-            "build_zone_tl": self.build_zone_tl,
-            "build_zone_br": self.build_zone_br,
-        }
+        data = {"roi": self.roi, "plane_depth": self.plane_depth}
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
         print(f"[Calibration] Saved to {path}")
@@ -229,15 +146,10 @@ class WorkspaceCalibration:
                 continue
             with open(p, "r") as f:
                 data = json.load(f)
-            self.roi = tuple(data["roi"]) if data.get("roi") else None
-            self.plane_depth = data.get("plane_depth")
-            self.calibrated = self.roi is not None
-            tl = data.get("build_zone_tl")
-            br = data.get("build_zone_br")
-            self.build_zone_tl = tuple(tl) if tl else None
-            self.build_zone_br = tuple(br) if br else None
-            extras = " + build zone" if self.has_build_zone else ""
-            print(f"[Calibration] Loaded from {p}{extras}")
+            self.roi = tuple(data["roi"])
+            self.plane_depth = data["plane_depth"]
+            self.calibrated = True
+            print(f"[Calibration] Loaded from {p}")
             return True
         return False
 
@@ -571,203 +483,6 @@ class BrickDetector:
         detections.sort(key=lambda d: d["confidence"], reverse=True)
         return detections
 
-    # ── Build-zone analysis ──────────────────────────────────────────────
-    def _stud_grid_px(self):
-        """Return a (ROWS, COLS, 2) array of stud pixel centres, or None.
-
-        Linear interpolation between the two calibrated corner studs. Assumes
-        the grid is approximately axis-aligned with the image (true for a
-        top-down camera mount).
-        """
-        if not self.calibration.has_build_zone:
-            return None
-        tl = np.array(self.calibration.build_zone_tl, dtype=float)
-        br = np.array(self.calibration.build_zone_br, dtype=float)
-        rows, cols = BUILD_GRID_ROWS, BUILD_GRID_COLS
-        grid = np.zeros((rows, cols, 2), dtype=float)
-        for r in range(rows):
-            tr = r / max(1, rows - 1)
-            for c in range(cols):
-                tc = c / max(1, cols - 1)
-                grid[r, c, 0] = tl[0] + tc * (br[0] - tl[0])
-                grid[r, c, 1] = tl[1] + tr * (br[1] - tl[1])
-        return grid
-
-    def _stud_grid_3d(self, grid_px, depth_frame):
-        """Deproject every stud to 3D camera-frame coords. NaN where depth fails."""
-        if grid_px is None or self.intrinsics is None:
-            return None
-        rows, cols, _ = grid_px.shape
-        grid_3d = np.full((rows, cols, 3), np.nan, dtype=float)
-        try:
-            fw = depth_frame.get_width()
-            fh = depth_frame.get_height()
-        except Exception:
-            fw, fh = 640, 480
-
-        for r in range(rows):
-            for c in range(cols):
-                px = int(round(grid_px[r, c, 0]))
-                py = int(round(grid_px[r, c, 1]))
-                if px < 0 or py < 0 or px >= fw or py >= fh:
-                    continue
-                d = self._sample_depth(depth_frame, px, py, radius=4)
-                if d <= 0:
-                    continue
-                xyz = rs.rs2_deproject_pixel_to_point(self.intrinsics, [px, py], d)
-                grid_3d[r, c] = xyz
-        return grid_3d
-
-    @staticmethod
-    def _stud_inside_brick(stud_xy, brick_center_xy, brick_size_px, brick_angle_deg):
-        """Is the stud pixel inside the brick's oriented bounding box?"""
-        dx = stud_xy[0] - brick_center_xy[0]
-        dy = stud_xy[1] - brick_center_xy[1]
-        a = -np.radians(brick_angle_deg)
-        cos_a, sin_a = np.cos(a), np.sin(a)
-        lx = cos_a * dx - sin_a * dy
-        ly = sin_a * dx + cos_a * dy
-        return (abs(lx) <= brick_size_px[0] / 2 and
-                abs(ly) <= brick_size_px[1] / 2)
-
-    def _stud_occupancy(self, grid_px, detections):
-        """Bool array (ROWS, COLS): True if a stud is under any detected brick."""
-        rows, cols, _ = grid_px.shape
-        occ = np.zeros((rows, cols), dtype=bool)
-        for r in range(rows):
-            for c in range(cols):
-                stud = grid_px[r, c]
-                for det in detections:
-                    if self._stud_inside_brick(
-                        stud, det["center_px"], det["size_px"], det["angle"]):
-                        occ[r, c] = True
-                        break
-        return occ
-
-    def _find_available_slots(self, occupancy):
-        """Sliding-window 4x2 (and 2x4) over the grid with a 1-stud gap rule.
-
-        A slot is valid when the brick footprint AND the surrounding 1-stud
-        ring (clamped to the grid) contain no occupied studs.
-        """
-        rows, cols = occupancy.shape
-        slots = []
-        for orient_label, gh, gw in [
-            ("horizontal", BRICK_STUDS_SHORT, BRICK_STUDS_LONG),  # 2 rows x 4 cols
-            ("vertical",   BRICK_STUDS_LONG,  BRICK_STUDS_SHORT), # 4 rows x 2 cols
-        ]:
-            if gh > rows or gw > cols:
-                continue
-            for r in range(rows - gh + 1):
-                for c in range(cols - gw + 1):
-                    if occupancy[r:r+gh, c:c+gw].any():
-                        continue
-                    gap = PLACEMENT_GAP_STUDS
-                    r0 = max(0, r - gap)
-                    r1 = min(rows, r + gh + gap)
-                    c0 = max(0, c - gap)
-                    c1 = min(cols, c + gw + gap)
-                    if occupancy[r0:r1, c0:c1].any():
-                        continue
-                    slots.append({
-                        "orient":     orient_label,
-                        "row":        r,
-                        "col":        c,
-                        "gh":         gh,
-                        "gw":         gw,
-                        "center_rc":  (r + (gh - 1) / 2.0, c + (gw - 1) / 2.0),
-                    })
-        return slots
-
-    @staticmethod
-    def _bilinear(grid, fr_rc):
-        """Bilinear sample of a grid (..., D) at fractional row/col coord."""
-        fr, fc = fr_rc
-        rows, cols = grid.shape[0], grid.shape[1]
-        r0 = int(np.floor(fr)); r1 = min(rows - 1, r0 + 1)
-        c0 = int(np.floor(fc)); c1 = min(cols - 1, c0 + 1)
-        wr = fr - r0
-        wc = fc - c0
-        a = grid[r0, c0]; b = grid[r0, c1]
-        c = grid[r1, c0]; d = grid[r1, c1]
-        return ((1 - wr) * ((1 - wc) * a + wc * b) +
-                wr * ((1 - wc) * c + wc * d))
-
-    def _slot_pose(self, slot, grid_px, grid_3d):
-        """Compute pixel + 3D centre of a slot, plus its yaw and footprint."""
-        cr, cc = slot["center_rc"]
-        px = self._bilinear(grid_px, (cr, cc))
-        xyz = self._bilinear(grid_3d, (cr, cc)) if grid_3d is not None else None
-        if xyz is not None and np.any(np.isnan(xyz)):
-            xyz = None
-
-        # Slot orientation in image axes (assumes axis-aligned grid):
-        #   horizontal slot → brick long axis along image x → yaw = 0
-        #   vertical slot   → brick long axis along image y → yaw = π/2
-        yaw = 0.0 if slot["orient"] == "horizontal" else float(np.pi / 2)
-
-        # Footprint dimensions (long, short)
-        if slot["orient"] == "horizontal":
-            size_m = (BRICK_LENGTH_M, BRICK_WIDTH_M)
-        else:
-            size_m = (BRICK_WIDTH_M, BRICK_LENGTH_M)
-
-        return {
-            "row":     slot["row"],
-            "col":     slot["col"],
-            "gh":      slot["gh"],
-            "gw":      slot["gw"],
-            "orient":  slot["orient"],
-            "px":      (int(round(px[0])), int(round(px[1]))),
-            "xyz":     tuple(map(float, xyz)) if xyz is not None else None,
-            "yaw":     yaw,
-            "size_m":  size_m,
-        }
-
-    def analyze_buildzone(self, depth_frame, detections):
-        """Return dict of build-zone state, or None if not calibrated.
-
-        Result keys:
-          studs_px    – (ROWS, COLS, 2) pixel centres
-          studs_3d    – (ROWS, COLS, 3) camera-frame coords (NaN where missing)
-          occupancy   – (ROWS, COLS) bool, True if covered by a detected brick
-          free_studs  – list of {"row","col","px","xyz"} for every free stud
-          slots       – list of slot pose dicts (see _slot_pose)
-        """
-        grid_px = self._stud_grid_px()
-        if grid_px is None:
-            return None
-
-        grid_3d = self._stud_grid_3d(grid_px, depth_frame)
-        occupancy = self._stud_occupancy(grid_px, detections)
-
-        free_studs = []
-        rows, cols = occupancy.shape
-        for r in range(rows):
-            for c in range(cols):
-                if occupancy[r, c]:
-                    continue
-                px = grid_px[r, c]
-                xyz = grid_3d[r, c] if grid_3d is not None else None
-                if xyz is not None and np.any(np.isnan(xyz)):
-                    xyz = None
-                free_studs.append({
-                    "row": r, "col": c,
-                    "px":  (int(round(px[0])), int(round(px[1]))),
-                    "xyz": tuple(map(float, xyz)) if xyz is not None else None,
-                })
-
-        raw_slots = self._find_available_slots(occupancy)
-        slots = [self._slot_pose(s, grid_px, grid_3d) for s in raw_slots]
-
-        return {
-            "studs_px":   grid_px,
-            "studs_3d":   grid_3d,
-            "occupancy":  occupancy,
-            "free_studs": free_studs,
-            "slots":      slots,
-        }
-
     def _sample_depth(self, depth_frame, cx, cy, radius=10):
         """Sample a small area around (cx, cy) and return median depth.
 
@@ -795,9 +510,8 @@ class BrickDetector:
         return float(np.median(depths)) if depths else 0.0
 
     # ── Visualisation ──────────────────────────────────────────────────────
-    def draw_detections(self, image, detections, build_info=None):
-        """Draw bounding boxes, stud markers, brick info, and (optionally)
-        the build-zone stud grid + available placement slots."""
+    def draw_detections(self, image, detections):
+        """Draw bounding boxes, stud markers, and brick info."""
         vis = image.copy()
 
         # Draw workspace ROI
@@ -855,73 +569,7 @@ class BrickDetector:
                 cv2.putText(vis, pos_label, (cx - 80, cy + 25),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
 
-        # Build-zone overlay
-        if build_info is not None:
-            self._draw_buildzone(vis, build_info)
-
         return vis
-
-    def _draw_buildzone(self, vis, build_info):
-        """Overlay the stud grid, occupancy, and available placement slots."""
-        grid_px = build_info["studs_px"]
-        occ = build_info["occupancy"]
-        slots = build_info["slots"]
-        rows, cols, _ = grid_px.shape
-
-        # Build-zone perimeter (corner studs as bounds)
-        tl = tuple(map(int, grid_px[0, 0]))
-        tr = tuple(map(int, grid_px[0, cols - 1]))
-        bl = tuple(map(int, grid_px[rows - 1, 0]))
-        br = tuple(map(int, grid_px[rows - 1, cols - 1]))
-        cv2.polylines(vis, [np.array([tl, tr, br, bl], dtype=np.int32)],
-                      isClosed=True, color=(255, 200, 0), thickness=1)
-        cv2.putText(vis, "Build Zone", (tl[0], tl[1] - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 200, 0), 1)
-
-        # Studs: green dot if free, red X if occupied
-        for r in range(rows):
-            for c in range(cols):
-                p = (int(round(grid_px[r, c, 0])), int(round(grid_px[r, c, 1])))
-                if occ[r, c]:
-                    cv2.drawMarker(vis, p, (0, 0, 255),
-                                   cv2.MARKER_TILTED_CROSS, 7, 1)
-                else:
-                    cv2.circle(vis, p, 2, (0, 220, 0), -1)
-
-        # Available slots: cyan polygon outline + filled centre dot
-        for slot in slots:
-            r, c, gh, gw = slot["row"], slot["col"], slot["gh"], slot["gw"]
-            corners = np.array([
-                grid_px[r,            c           ],
-                grid_px[r,            c + gw - 1  ],
-                grid_px[r + gh - 1,   c + gw - 1  ],
-                grid_px[r + gh - 1,   c           ],
-            ], dtype=float)
-            # Expand outwards by half a stud pitch so the rectangle reflects
-            # the actual brick footprint instead of the inner stud bounds.
-            centroid = corners.mean(axis=0)
-            edge_h = np.linalg.norm(corners[1] - corners[0]) / max(1, gw - 1) if gw > 1 else 0
-            edge_v = np.linalg.norm(corners[3] - corners[0]) / max(1, gh - 1) if gh > 1 else 0
-            pitch_px = max(edge_h, edge_v, 8.0)
-            expanded = []
-            for p in corners:
-                d = p - centroid
-                n = np.linalg.norm(d)
-                if n > 1e-6:
-                    p = p + d / n * (pitch_px * 0.5)
-                expanded.append(p)
-            poly = np.array(expanded, dtype=np.int32)
-            cv2.polylines(vis, [poly], isClosed=True,
-                          color=(255, 255, 0), thickness=1)
-            cv2.circle(vis, slot["px"], 3, (255, 255, 0), -1)
-
-        # HUD: counts
-        n_free = len(build_info["free_studs"])
-        n_total = rows * cols
-        n_slots = len(slots)
-        cv2.putText(vis, f"Studs: {n_free}/{n_total} free   Slots: {n_slots}",
-                    (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                    (255, 255, 0), 2)
 
     # ── Main loop ──────────────────────────────────────────────────────────
     def run(self):
@@ -936,7 +584,7 @@ class BrickDetector:
                 if self.calibration.calibrate_interactive(color_image, depth_frame):
                     self.calibration.save()
 
-        print("[Detector] Running – keys: q=quit  c=workspace  b=build-zone  s=snapshot")
+        print("[Detector] Running – press 'q' to quit, 'c' to re-calibrate, 's' to save snapshot")
 
         try:
             while True:
@@ -945,9 +593,8 @@ class BrickDetector:
                     continue
 
                 detections = self.detect_bricks(color_image, depth_frame)
-                build_info = self.analyze_buildzone(depth_frame, detections)
 
-                vis = self.draw_detections(color_image, detections, build_info)
+                vis = self.draw_detections(color_image, detections)
 
                 # HUD
                 cv2.putText(vis, f"Bricks: {len(detections)}", (10, 25),
@@ -960,9 +607,6 @@ class BrickDetector:
                     break
                 elif key == ord('c'):
                     if self.calibration.calibrate_interactive(color_image, depth_frame):
-                        self.calibration.save()
-                elif key == ord('b'):
-                    if self.calibration.calibrate_build_zone(color_image):
                         self.calibration.save()
                 elif key == ord('s'):
                     fname = f"snapshot_{int(time.time())}.png"
@@ -997,7 +641,7 @@ def main(args=None):
     import rclpy
     from rclpy.node import Node
     from sensor_msgs.msg import Image
-    from geometry_msgs.msg import PoseStamped, PoseArray, Pose
+    from geometry_msgs.msg import PoseStamped
     from vision_msgs.msg import (
         Detection3D, Detection3DArray,
         ObjectHypothesisWithPose, BoundingBox3D,
@@ -1019,13 +663,9 @@ def main(args=None):
             #   ~/detections        – every brick this frame, each with pose + colour bound
             #   ~/brick_pose        – PoseStamped of the highest-confidence brick (legacy/easy)
             #   ~/detection_image   – annotated camera feed
-            #   ~/free_studs        – PoseArray of unoccupied build-zone studs (camera frame)
-            #   ~/available_slots   – PoseArray of valid 4x2 placement midpoints
             self.image_pub      = self.create_publisher(Image,             "~/detection_image", 10)
             self.detections_pub = self.create_publisher(Detection3DArray,  "~/detections",      10)
             self.pose_pub       = self.create_publisher(PoseStamped,       "~/brick_pose",      10)
-            self.free_studs_pub = self.create_publisher(PoseArray,         "~/free_studs",      10)
-            self.slots_pub      = self.create_publisher(PoseArray,         "~/available_slots", 10)
 
             self.detector.start_camera()
             self.detector.calibration.load()
@@ -1034,8 +674,7 @@ def main(args=None):
             self.get_logger().info(
                 f"Brick detector node started (preview={'on' if self.show_preview else 'off'})")
             if self.show_preview:
-                self.get_logger().info(
-                    "Preview keys:  q=quit  c=workspace  b=build-zone  s=snapshot")
+                self.get_logger().info("Preview keys:  q=quit  c=recalibrate  s=snapshot")
 
         def detect_callback(self):
             color_image, depth_frame = self.detector.get_frames()
@@ -1043,10 +682,9 @@ def main(args=None):
                 return
 
             detections = self.detector.detect_bricks(color_image, depth_frame)
-            build_info = self.detector.analyze_buildzone(depth_frame, detections)
 
             # Publish annotated image
-            vis = self.detector.draw_detections(color_image, detections, build_info)
+            vis = self.detector.draw_detections(color_image, detections)
             img_msg = self.bridge.cv2_to_imgmsg(vis, encoding="bgr8")
             self.image_pub.publish(img_msg)
 
@@ -1104,44 +742,6 @@ def main(args=None):
                 pose.pose = best.bbox.center
                 self.pose_pub.publish(pose)
 
-            # Build-zone state: free studs and available 4x2 placement slots
-            free_arr = PoseArray()
-            free_arr.header.stamp = stamp
-            free_arr.header.frame_id = frame
-            slots_arr = PoseArray()
-            slots_arr.header.stamp = stamp
-            slots_arr.header.frame_id = frame
-
-            if build_info is not None:
-                # Free studs (only those with valid 3D depth)
-                for stud in build_info["free_studs"]:
-                    if stud["xyz"] is None:
-                        continue
-                    p = Pose()
-                    p.position.x = stud["xyz"][0]
-                    p.position.y = stud["xyz"][1]
-                    p.position.z = stud["xyz"][2]
-                    p.orientation.w = 1.0
-                    free_arr.poses.append(p)
-
-                # Available placement slots (only those with valid 3D depth)
-                for slot in build_info["slots"]:
-                    if slot["xyz"] is None:
-                        continue
-                    p = Pose()
-                    p.position.x = slot["xyz"][0]
-                    p.position.y = slot["xyz"][1]
-                    p.position.z = slot["xyz"][2]
-                    qx, qy, qz, qw = _rpy_to_quat(0.0, 0.0, slot["yaw"])
-                    p.orientation.x = qx
-                    p.orientation.y = qy
-                    p.orientation.z = qz
-                    p.orientation.w = qw
-                    slots_arr.poses.append(p)
-
-            self.free_studs_pub.publish(free_arr)
-            self.slots_pub.publish(slots_arr)
-
             # Local OpenCV preview window (mirrors standalone mode)
             if self.show_preview:
                 cv2.imshow("Brick Detector (ROS)", vis)
@@ -1151,9 +751,6 @@ def main(args=None):
                     raise KeyboardInterrupt
                 elif key == ord('c'):
                     if self.detector.calibration.calibrate_interactive(color_image, depth_frame):
-                        self.detector.calibration.save()
-                elif key == ord('b'):
-                    if self.detector.calibration.calibrate_build_zone(color_image):
                         self.detector.calibration.save()
                 elif key == ord('s'):
                     fname = f"snapshot_{int(time.time())}.png"
