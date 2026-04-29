@@ -29,6 +29,7 @@ src/log/
 # Misc
 192.168.0.*
 *.zip
+.codex
 
 # IDE
 .vscode/
