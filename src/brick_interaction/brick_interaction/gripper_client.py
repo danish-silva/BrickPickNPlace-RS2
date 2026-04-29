@@ -3,7 +3,7 @@
 OnRobot RG2 gripper client for the pick-and-place system.
 
 Controls the gripper by publishing the desired finger width to the
-/onrobot/finger_width_controller/commands topic.
+/finger_width_controller/commands topic.
 
 The gripper is moved smoothly: instead of jumping from the current width
 straight to the target, intermediate widths are published on a periodic
@@ -22,8 +22,8 @@ from typing import Callable
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
 
-# ── ROS2 topic published by the OnRobot RG2 ros2_control driver ──
-GRIPPER_CMD_TOPIC = '/onrobot/finger_width_controller/commands'
+# ── ROS2 topic published by the OnRobot RG2 ros2_control controller ──
+GRIPPER_CMD_TOPIC = '/finger_width_controller/commands'
 
 
 class GripperClient:

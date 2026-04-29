@@ -7,9 +7,15 @@
       #   kinematics_solver_timeout: 0.005
       #   kinematics_solver_attempts: 3
       ur_manipulator:
+        # kinematics_solver: cached_ik_kinematics_plugin/CachedKDLKinematicsPlugin
+        # # optional parameters for caching:
+        # max_cache_size: 10000
+        # min_pose_distance: 1.0
+        # min_joint_config_distance: 4.0
         kinematics_solver: cached_ik_kinematics_plugin/CachedKDLKinematicsPlugin
-        # optional parameters for caching:
+        kinematics_solver_search_resolution: 0.005
+        kinematics_solver_timeout: 0.5      # increased from 0.05
+        kinematics_solver_attempts: 5
         max_cache_size: 10000
-        min_pose_distance: 1.0
-        min_joint_config_distance: 4.0
-
+        min_pose_distance: 0.1              # reduced — less strict caching
+        min_joint_config_distance: 0.5      # reduced

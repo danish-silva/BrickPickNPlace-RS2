@@ -15,8 +15,18 @@
 #include <cmath>
 #include <mutex>
 #include <atomic>
+#include <thread>
+#include <map>
 
-static const std::string PLANNING_GROUP = "ur_manipulator";
+static const std::string DEFAULT_PLANNING_GROUP = "ur_onrobot_manipulator";
+static const std::vector<std::string> JOINT_NAMES = {
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint",
+};
 
 // ---------------------------------------------------------------------------
 // Structure to hold a target pose cleanly
@@ -27,12 +37,20 @@ struct TargetPose {
     std::string name;
 };
 
+struct TargetJoints {
+    std::vector<double> positions;
+    std::string name;
+};
+
 // ---------------------------------------------------------------------------
 // Global state for subscriber
 // ---------------------------------------------------------------------------
 std::vector<TargetPose> g_received_poses;
+std::vector<TargetJoints> g_received_joint_targets;
 std::mutex g_poses_mutex;
+std::mutex g_joints_mutex;
 std::atomic<bool> g_new_poses_available{false};
+std::atomic<bool> g_new_joints_available{false};
 
 // ---------------------------------------------------------------------------
 // Apply joint constraints to prevent >180 degree rotations
@@ -135,6 +153,67 @@ bool moveSequence(
     return true;
 }
 
+bool moveToJoints(
+    moveit::planning_interface::MoveGroupInterface & move_group,
+    const TargetJoints & target,
+    const rclcpp::Logger & logger)
+{
+    std::map<std::string, double> joint_goal;
+    for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
+        joint_goal[JOINT_NAMES[i]] = target.positions[i];
+    }
+
+    RCLCPP_INFO(logger, "Moving to joint target '%s'", target.name.c_str());
+    for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
+        RCLCPP_INFO(logger, "  %s: %.3f rad", JOINT_NAMES[i].c_str(), target.positions[i]);
+    }
+
+    move_group.setStartStateToCurrentState();
+    move_group.setJointValueTarget(joint_goal);
+    move_group.setNumPlanningAttempts(20);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+    if (!success) {
+        RCLCPP_ERROR(logger, "Planning FAILED for joint target '%s'", target.name.c_str());
+        return false;
+    }
+
+    bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+    if (executed) {
+        RCLCPP_INFO(logger, "Reached joint target '%s'", target.name.c_str());
+    } else {
+        RCLCPP_ERROR(logger, "Execution FAILED for joint target '%s'", target.name.c_str());
+    }
+
+    return executed;
+}
+
+bool moveJointSequence(
+    moveit::planning_interface::MoveGroupInterface & move_group,
+    const std::vector<TargetJoints> & targets,
+    const rclcpp::Logger & logger)
+{
+    RCLCPP_INFO(logger, "Starting joint sequence of %zu movements", targets.size());
+
+    for (size_t i = 0; i < targets.size(); ++i) {
+        RCLCPP_INFO(logger, "Joint step %zu / %zu", i + 1, targets.size());
+
+        if (!moveToJoints(move_group, targets[i], logger)) {
+            RCLCPP_ERROR(logger, "Joint sequence aborted at step %zu / %zu",
+                i + 1, targets.size());
+            return false;
+        }
+
+        rclcpp::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    RCLCPP_INFO(logger, "Joint sequence complete");
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Setup collision scene
 // ---------------------------------------------------------------------------
@@ -233,6 +312,10 @@ int main(int argc, char * argv[])
     );
 
     auto logger = node->get_logger();
+    std::string planning_group = DEFAULT_PLANNING_GROUP;
+    node->get_parameter("planning_group", planning_group);
+
+    RCLCPP_INFO(logger, "Using MoveIt planning group '%s'", planning_group.c_str());
 
     // -----------------------------------------------------------------------
     // Subscribe to ordered_pose_array topic
@@ -289,12 +372,46 @@ int main(int argc, char * argv[])
         }
     );
 
+    auto joint_subscription = node->create_subscription<std_msgs::msg::Float64MultiArray>(
+        "ordered_joint_array",
+        10,
+        [&logger](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+            const size_t JOINT_TARGET_SIZE = 6;
+
+            if (msg->data.size() % JOINT_TARGET_SIZE != 0) {
+                RCLCPP_ERROR(logger,
+                    "Received joint array size %zu is not a multiple of 6 — ignoring",
+                    msg->data.size());
+                return;
+            }
+
+            size_t num_targets = msg->data.size() / JOINT_TARGET_SIZE;
+            RCLCPP_INFO(logger, "Received %zu joint target(s)", num_targets);
+
+            std::vector<TargetJoints> new_targets;
+            for (size_t i = 0; i < num_targets; ++i) {
+                size_t offset = i * JOINT_TARGET_SIZE;
+                TargetJoints target;
+                target.name = "joint_target_" + std::to_string(i + 1);
+                target.positions.assign(
+                    msg->data.begin() + offset,
+                    msg->data.begin() + offset + JOINT_TARGET_SIZE
+                );
+                new_targets.push_back(target);
+            }
+
+            std::lock_guard<std::mutex> lock(g_joints_mutex);
+            g_received_joint_targets = new_targets;
+            g_new_joints_available = true;
+        }
+    );
+
     // Spin node in background so subscriber and MoveGroupInterface can receive callbacks
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
     auto spinner = std::thread([&executor]() { executor.spin(); });
 
-    moveit::planning_interface::MoveGroupInterface move_group(node, PLANNING_GROUP);
+    moveit::planning_interface::MoveGroupInterface move_group(node, planning_group);
     move_group.setMaxVelocityScalingFactor(0.3);
     move_group.setMaxAccelerationScalingFactor(0.3);
     move_group.setPlanningTime(15.0);
@@ -308,10 +425,23 @@ int main(int argc, char * argv[])
     // -----------------------------------------------------------------------
     // Wait for pose array then execute — loops so it re-runs on new data
     // -----------------------------------------------------------------------
-    RCLCPP_INFO(logger, "Waiting for poses on 'ordered_pose_array'...");
+    RCLCPP_INFO(logger, "Waiting for poses on 'ordered_pose_array' or joints on 'ordered_joint_array'...");
 
     while (rclcpp::ok()) {
-        if (g_new_poses_available) {
+        if (g_new_joints_available) {
+            std::vector<TargetJoints> targets;
+            {
+                std::lock_guard<std::mutex> lock(g_joints_mutex);
+                targets = g_received_joint_targets;
+                g_new_joints_available = false;
+            }
+
+            RCLCPP_INFO(logger, "Executing joint sequence of %zu targets", targets.size());
+            moveJointSequence(move_group, targets, logger);
+
+            move_group.clearPathConstraints();
+            RCLCPP_INFO(logger, "Joint sequence complete — waiting for next command...");
+        } else if (g_new_poses_available) {
             std::vector<TargetPose> targets;
             {
                 std::lock_guard<std::mutex> lock(g_poses_mutex);
