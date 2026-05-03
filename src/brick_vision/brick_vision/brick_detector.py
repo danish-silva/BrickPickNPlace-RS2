@@ -996,7 +996,9 @@ def main(args=None):
     """ROS 2 entry point (used by ros2 run / launch)."""
     import rclpy
     from rclpy.node import Node
+    from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
     from sensor_msgs.msg import Image
+    from std_msgs.msg import Empty
     from geometry_msgs.msg import PoseStamped, PoseArray, Pose
     from vision_msgs.msg import (
         Detection3D, Detection3DArray,
@@ -1008,61 +1010,187 @@ def main(args=None):
         def __init__(self):
             super().__init__("brick_detector")
 
-            # Parameters
-            self.declare_parameter("show_preview", True)
-            self.show_preview = self.get_parameter("show_preview").value
+            # ── Parameters ──────────────────────────────────────────────
+            self.declare_parameter("show_preview",    True)
+            self.declare_parameter("mode",            "on_trigger")  # or "continuous"
+            self.declare_parameter("trigger_topic",   "/snapshot_trigger")
+            self.declare_parameter("snapshot_frames", 5)
+            self.show_preview    = bool(self.get_parameter("show_preview").value)
+            self.mode            = str(self.get_parameter("mode").value)
+            self.trigger_topic   = str(self.get_parameter("trigger_topic").value)
+            self.snapshot_frames = int(self.get_parameter("snapshot_frames").value)
+            if self.mode not in ("continuous", "on_trigger"):
+                self.get_logger().warn(
+                    f"Unknown mode '{self.mode}', falling back to 'on_trigger'")
+                self.mode = "on_trigger"
 
+            # ── State ───────────────────────────────────────────────────
             self.detector = BrickDetector()
             self.bridge = CvBridge()
+            self._latest_vis = None         # last annotated frame (no status overlay)
+            self._last_snapshot_time = None
+            self._capturing = False         # re-entrance guard for on_trigger mode
 
-            # Publishers
-            #   ~/detections        – every brick this frame, each with pose + colour bound
-            #   ~/brick_pose        – PoseStamped of the highest-confidence brick (legacy/easy)
-            #   ~/detection_image   – annotated camera feed
-            #   ~/free_studs        – PoseArray of unoccupied build-zone studs (camera frame)
-            #   ~/available_slots   – PoseArray of valid 4x2 placement midpoints
-            self.image_pub      = self.create_publisher(Image,             "~/detection_image", 10)
-            self.detections_pub = self.create_publisher(Detection3DArray,  "~/detections",      10)
-            self.pose_pub       = self.create_publisher(PoseStamped,       "~/brick_pose",      10)
-            self.free_studs_pub = self.create_publisher(PoseArray,         "~/free_studs",      10)
-            self.slots_pub      = self.create_publisher(PoseArray,         "~/available_slots", 10)
+            # ── Publishers ──────────────────────────────────────────────
+            # Snapshot results use TRANSIENT_LOCAL durability in on_trigger
+            # mode so late subscribers immediately receive the most recent
+            # snapshot. The image topic stays on default QoS (image streams
+            # shouldn't be latched).
+            if self.mode == "on_trigger":
+                results_qos = QoSProfile(
+                    depth=1,
+                    reliability=ReliabilityPolicy.RELIABLE,
+                    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                )
+            else:
+                results_qos = 10  # default
 
+            self.image_pub      = self.create_publisher(Image,            "~/detection_image", 10)
+            self.detections_pub = self.create_publisher(Detection3DArray, "~/detections",      results_qos)
+            self.pose_pub       = self.create_publisher(PoseStamped,      "~/brick_pose",      results_qos)
+            self.free_studs_pub = self.create_publisher(PoseArray,        "~/free_studs",      results_qos)
+            self.slots_pub      = self.create_publisher(PoseArray,        "~/available_slots", results_qos)
+
+            # ── Camera ──────────────────────────────────────────────────
             self.detector.start_camera()
             self.detector.calibration.load()
 
-            self.timer = self.create_timer(1.0 / 15, self.detect_callback)  # 15 Hz
+            # ── Mode wiring ─────────────────────────────────────────────
+            if self.mode == "continuous":
+                self.timer = self.create_timer(1.0 / 15, self._continuous_tick)
+            else:
+                self.trigger_sub = self.create_subscription(
+                    Empty, self.trigger_topic, self._on_trigger, 10)
+
+            # Always-on slow tick keeps the preview window responsive in
+            # on_trigger mode (between snapshots) and handles key input.
+            if self.show_preview:
+                self.preview_timer = self.create_timer(1.0 / 10, self._preview_tick)
+
             self.get_logger().info(
-                f"Brick detector node started (preview={'on' if self.show_preview else 'off'})")
+                f"brick_detector started — mode={self.mode}, preview={self.show_preview}")
+            if self.mode == "on_trigger":
+                self.get_logger().info(
+                    f"Awaiting snapshots on '{self.trigger_topic}' "
+                    f"({self.snapshot_frames} frames per trigger)")
             if self.show_preview:
                 self.get_logger().info(
-                    "Preview keys:  q=quit  c=workspace  b=build-zone  s=snapshot")
+                    "Preview keys:  q=quit  t=trigger  c=workspace  b=build-zone  s=snapshot")
 
-        def detect_callback(self):
+        # ── Continuous-mode tick ────────────────────────────────────────
+        def _continuous_tick(self):
             color_image, depth_frame = self.detector.get_frames()
             if color_image is None:
                 return
-
             detections = self.detector.detect_bricks(color_image, depth_frame)
             build_info = self.detector.analyze_buildzone(depth_frame, detections)
+            self._publish_results(self.get_clock().now().to_msg(),
+                                  color_image, detections, build_info)
 
-            # Publish annotated image
+        # ── On-trigger mode ─────────────────────────────────────────────
+        def _on_trigger(self, _msg):
+            if self._capturing:
+                self.get_logger().warn("Snapshot in progress — ignoring trigger")
+                return
+            self._capturing = True
+            try:
+                best = self._capture_and_analyze(self.snapshot_frames)
+                if best is None:
+                    self.get_logger().warn("Snapshot failed: no valid frames")
+                    return
+                color_image, _depth_frame, detections, build_info = best
+                self._publish_results(self.get_clock().now().to_msg(),
+                                      color_image, detections, build_info)
+                self._last_snapshot_time = time.time()
+                n_slots = len(build_info["slots"]) if build_info else 0
+                self.get_logger().info(
+                    f"Snapshot taken: {len(detections)} bricks, {n_slots} slots")
+            finally:
+                self._capturing = False
+
+        def _capture_and_analyze(self, n_frames):
+            """Capture N frames, run detection + build-zone analysis on each,
+            and return the (color_image, depth_frame, detections, build_info)
+            tuple from the highest-scoring frame.
+
+            Score = number of bricks + 0.001 * sum(confidences) so ties break
+            by total detection confidence.
+            """
+            best = None
+            best_score = -1.0
+            for _ in range(max(1, n_frames)):
+                color_image, depth_frame = self.detector.get_frames()
+                if color_image is None:
+                    continue
+                detections = self.detector.detect_bricks(color_image, depth_frame)
+                build_info = self.detector.analyze_buildzone(depth_frame, detections)
+                score = (len(detections) +
+                         0.001 * sum(d.get("confidence", 0.0) for d in detections))
+                if score > best_score:
+                    best_score = score
+                    best = (color_image, depth_frame, detections, build_info)
+            return best
+
+        # ── Preview-only tick (display + keys) ──────────────────────────
+        def _preview_tick(self):
+            if self._latest_vis is not None:
+                vis = self._latest_vis.copy()
+            else:
+                # No snapshot yet → show live feed so the user knows the
+                # camera is alive while waiting for the first trigger.
+                color_image, _ = self.detector.get_frames()
+                if color_image is None:
+                    return
+                vis = color_image.copy()
+                cv2.putText(vis, "(awaiting trigger)", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+            self._draw_status_overlay(vis)
+            cv2.imshow("Brick Detector (ROS)", vis)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord('q'):
+                self.get_logger().info("Quit requested from preview window")
+                raise KeyboardInterrupt
+            elif key == ord('t'):
+                # Manual override: fire the same path as a /snapshot_trigger
+                # message. Works in both modes for independent testing.
+                self.get_logger().info("Manual trigger (key 't')")
+                self._on_trigger(None)
+            elif key in (ord('c'), ord('b'), ord('s')):
+                # Calibration needs a fresh frame; snapshot saves the cached vis
+                if key == ord('s'):
+                    fname = f"snapshot_{int(time.time())}.png"
+                    cv2.imwrite(fname, vis)
+                    self.get_logger().info(f"Saved snapshot {fname}")
+                    return
+                color_image, depth_frame = self.detector.get_frames()
+                if color_image is None:
+                    return
+                if key == ord('c'):
+                    if self.detector.calibration.calibrate_interactive(color_image, depth_frame):
+                        self.detector.calibration.save()
+                elif key == ord('b'):
+                    if self.detector.calibration.calibrate_build_zone(color_image):
+                        self.detector.calibration.save()
+
+        # ── Publish helper (shared between modes) ───────────────────────
+        def _publish_results(self, stamp, color_image, detections, build_info):
+            frame = "camera_color_optical_frame"
+
+            # Annotated image (cached for preview, also published as-is)
             vis = self.detector.draw_detections(color_image, detections, build_info)
+            self._latest_vis = vis
             img_msg = self.bridge.cv2_to_imgmsg(vis, encoding="bgr8")
             self.image_pub.publish(img_msg)
 
-            # Publish all bricks bound to their colour in a single message.
-            stamp = self.get_clock().now().to_msg()
-            frame = "camera_color_optical_frame"
-
+            # Bricks → Detection3DArray
             arr = Detection3DArray()
             arr.header.stamp = stamp
             arr.header.frame_id = frame
-
             for det in detections:
                 if not det.get("center_3d"):
                     continue
-
-                # Brick is flat on the workspace → roll = pitch = 0
                 roll, pitch = 0.0, 0.0
                 yaw = float(np.radians(det["angle"]))
                 qx, qy, qz, qw = _rpy_to_quat(roll, pitch, yaw)
@@ -1070,7 +1198,6 @@ def main(args=None):
                 d3 = Detection3D()
                 d3.header.stamp = stamp
                 d3.header.frame_id = frame
-
                 bbox = BoundingBox3D()
                 bbox.center.position.x = float(det["center_3d"][0])
                 bbox.center.position.y = float(det["center_3d"][1])
@@ -1079,24 +1206,20 @@ def main(args=None):
                 bbox.center.orientation.y = qy
                 bbox.center.orientation.z = qz
                 bbox.center.orientation.w = qw
-                # Brick footprint (length × width) and an estimated height
                 bbox.size.x = float(det["size_m"][0]) if det.get("size_m") else BRICK_LENGTH_M
                 bbox.size.y = float(det["size_m"][1]) if det.get("size_m") else BRICK_WIDTH_M
-                bbox.size.z = STUD_DIAMETER_M  # rough thickness incl. studs
+                bbox.size.z = STUD_DIAMETER_M
                 d3.bbox = bbox
 
-                # Colour goes in the hypothesis class_id; confidence in score
                 hyp = ObjectHypothesisWithPose()
                 hyp.hypothesis.class_id = str(det["colour"])
                 hyp.hypothesis.score    = float(det["confidence"])
-                hyp.pose.pose = bbox.center  # same pose, no covariance
+                hyp.pose.pose = bbox.center
                 d3.results.append(hyp)
-
                 arr.detections.append(d3)
 
             self.detections_pub.publish(arr)
 
-            # Convenience: also publish the best brick's pose on its own topic
             if arr.detections:
                 best = arr.detections[0]
                 pose = PoseStamped()
@@ -1104,7 +1227,8 @@ def main(args=None):
                 pose.pose = best.bbox.center
                 self.pose_pub.publish(pose)
 
-            # Build-zone state: free studs and available 4x2 placement slots
+            # Build-zone outputs (always publish, even empty, so latched
+            # subscribers get a consistent snapshot view)
             free_arr = PoseArray()
             free_arr.header.stamp = stamp
             free_arr.header.frame_id = frame
@@ -1113,7 +1237,6 @@ def main(args=None):
             slots_arr.header.frame_id = frame
 
             if build_info is not None:
-                # Free studs (only those with valid 3D depth)
                 for stud in build_info["free_studs"]:
                     if stud["xyz"] is None:
                         continue
@@ -1123,8 +1246,6 @@ def main(args=None):
                     p.position.z = stud["xyz"][2]
                     p.orientation.w = 1.0
                     free_arr.poses.append(p)
-
-                # Available placement slots (only those with valid 3D depth)
                 for slot in build_info["slots"]:
                     if slot["xyz"] is None:
                         continue
@@ -1142,23 +1263,18 @@ def main(args=None):
             self.free_studs_pub.publish(free_arr)
             self.slots_pub.publish(slots_arr)
 
-            # Local OpenCV preview window (mirrors standalone mode)
-            if self.show_preview:
-                cv2.imshow("Brick Detector (ROS)", vis)
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    self.get_logger().info("Quit requested from preview window")
-                    raise KeyboardInterrupt
-                elif key == ord('c'):
-                    if self.detector.calibration.calibrate_interactive(color_image, depth_frame):
-                        self.detector.calibration.save()
-                elif key == ord('b'):
-                    if self.detector.calibration.calibrate_build_zone(color_image):
-                        self.detector.calibration.save()
-                elif key == ord('s'):
-                    fname = f"snapshot_{int(time.time())}.png"
-                    cv2.imwrite(fname, vis)
-                    self.get_logger().info(f"Saved snapshot {fname}")
+        def _draw_status_overlay(self, vis):
+            if self.mode == "on_trigger":
+                if self._last_snapshot_time is None:
+                    age_str = "no snapshot yet"
+                else:
+                    age = time.time() - self._last_snapshot_time
+                    age_str = f"last snapshot: {age:.1f}s ago"
+                txt = f"MODE: on_trigger | {age_str}  [t]=manual"
+            else:
+                txt = "MODE: continuous  [t]=re-snap"
+            cv2.putText(vis, txt, (10, vis.shape[0] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         def destroy_node(self):
             if self.show_preview:
