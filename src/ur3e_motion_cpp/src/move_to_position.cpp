@@ -42,6 +42,10 @@ struct TargetJoints {
     std::string name;
 };
 
+void printCurrentPose(
+    moveit::planning_interface::MoveGroupInterface & move_group,
+    const rclcpp::Logger & logger);
+
 // ---------------------------------------------------------------------------
 // Global state for subscriber
 // ---------------------------------------------------------------------------
@@ -95,6 +99,7 @@ bool moveToPose(
         target.roll, target.pitch, target.yaw);
 
     move_group.setStartStateToCurrentState();
+    move_group.clearPoseTargets();
 
     geometry_msgs::msg::Pose pose;
     pose.position.x = target.x;
@@ -105,21 +110,46 @@ bool moveToPose(
     q.setRPY(target.roll, target.pitch, target.yaw);
     pose.orientation = tf2::toMsg(q);
 
-    move_group.setPoseTarget(pose);
+    const std::string ee_link = move_group.getEndEffectorLink();
+    if (!ee_link.empty()) {
+        RCLCPP_INFO(logger, "Using end effector link '%s' for pose target", ee_link.c_str());
+        move_group.setPoseTarget(pose, ee_link);
+    } else {
+        move_group.setPoseTarget(pose);
+    }
     move_group.setNumPlanningAttempts(20);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
     if (!success) {
-        RCLCPP_ERROR(logger, "Planning FAILED for '%s'", target.name.c_str());
-        return false;
+        RCLCPP_WARN(logger, "Primary Cartesian planning failed for '%s' — retrying with current orientation", target.name.c_str());
+        move_group.clearPoseTargets();
+        move_group.setStartStateToCurrentState();
+
+        geometry_msgs::msg::PoseStamped current_pose = move_group.getCurrentPose();
+        pose.orientation = current_pose.pose.orientation;
+
+        if (!ee_link.empty()) {
+            move_group.setPoseTarget(pose, ee_link);
+        } else {
+            move_group.setPoseTarget(pose);
+        }
+
+        success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+        if (!success) {
+            RCLCPP_ERROR(logger, "Fallback Cartesian planning failed for '%s'", target.name.c_str());
+            return false;
+        }
     }
 
     bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
+    move_group.clearPoseTargets();
+
     if (executed) {
         RCLCPP_INFO(logger, "Reached '%s' ✓", target.name.c_str());
+        printCurrentPose(move_group, logger);
     } else {
         RCLCPP_ERROR(logger, "Execution FAILED for '%s'", target.name.c_str());
     }
@@ -163,10 +193,10 @@ bool moveToJoints(
         joint_goal[JOINT_NAMES[i]] = target.positions[i];
     }
 
-    RCLCPP_INFO(logger, "Moving to joint target '%s'", target.name.c_str());
-    for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
-        RCLCPP_INFO(logger, "  %s: %.3f rad", JOINT_NAMES[i].c_str(), target.positions[i]);
-    }
+    // RCLCPP_INFO(logger, "Moving to joint target '%s'", target.name.c_str());
+    // for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
+    //     RCLCPP_INFO(logger, "  %s: %.3f rad", JOINT_NAMES[i].c_str(), target.positions[i]);
+    // }
 
     move_group.setStartStateToCurrentState();
     move_group.setJointValueTarget(joint_goal);
@@ -183,9 +213,10 @@ bool moveToJoints(
     bool executed = (move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
     if (executed) {
-        RCLCPP_INFO(logger, "Reached joint target '%s'", target.name.c_str());
+        // RCLCPP_INFO(logger, "Reached joint target '%s'", target.name.c_str());
+        printCurrentPose(move_group, logger);
     } else {
-        RCLCPP_ERROR(logger, "Execution FAILED for joint target '%s'", target.name.c_str());
+        // RCLCPP_ERROR(logger, "Execution FAILED for joint target '%s'", target.name.c_str());
     }
 
     return executed;
@@ -196,21 +227,21 @@ bool moveJointSequence(
     const std::vector<TargetJoints> & targets,
     const rclcpp::Logger & logger)
 {
-    RCLCPP_INFO(logger, "Starting joint sequence of %zu movements", targets.size());
+    // RCLCPP_INFO(logger, "Starting joint sequence of %zu movements", targets.size());
 
     for (size_t i = 0; i < targets.size(); ++i) {
-        RCLCPP_INFO(logger, "Joint step %zu / %zu", i + 1, targets.size());
+        // RCLCPP_INFO(logger, "Joint step %zu / %zu", i + 1, targets.size());
 
         if (!moveToJoints(move_group, targets[i], logger)) {
-            RCLCPP_ERROR(logger, "Joint sequence aborted at step %zu / %zu",
-                i + 1, targets.size());
+            // RCLCPP_ERROR(logger, "Joint sequence aborted at step %zu / %zu",
+            //     i + 1, targets.size());
             return false;
         }
 
         rclcpp::sleep_for(std::chrono::milliseconds(500));
     }
 
-    RCLCPP_INFO(logger, "Joint sequence complete");
+    // RCLCPP_INFO(logger, "Joint sequence complete");
     return true;
 }
 
@@ -386,7 +417,7 @@ int main(int argc, char * argv[])
             }
 
             size_t num_targets = msg->data.size() / JOINT_TARGET_SIZE;
-            RCLCPP_INFO(logger, "Received %zu joint target(s)", num_targets);
+            // RCLCPP_INFO(logger, "Received %zu joint target(s)", num_targets);
 
             std::vector<TargetJoints> new_targets;
             for (size_t i = 0; i < num_targets; ++i) {
@@ -415,6 +446,14 @@ int main(int argc, char * argv[])
     move_group.setMaxVelocityScalingFactor(0.3);
     move_group.setMaxAccelerationScalingFactor(0.3);
     move_group.setPlanningTime(15.0);
+    move_group.setPlannerId("RRTConnectkConfigDefault");
+    move_group.setPoseReferenceFrame("base_link");
+    move_group.setGoalPositionTolerance(0.01);
+    move_group.setGoalOrientationTolerance(0.05);
+    move_group.allowReplanning(true);
+
+    RCLCPP_INFO(logger, "MoveIt planning frame: %s", move_group.getPlanningFrame().c_str());
+    RCLCPP_INFO(logger, "MoveIt end effector link: %s", move_group.getEndEffectorLink().c_str());
 
     moveit::planning_interface::PlanningSceneInterface scene;
     setupScene(scene);
@@ -436,11 +475,11 @@ int main(int argc, char * argv[])
                 g_new_joints_available = false;
             }
 
-            RCLCPP_INFO(logger, "Executing joint sequence of %zu targets", targets.size());
+            // RCLCPP_INFO(logger, "Executing joint sequence of %zu targets", targets.size());
             moveJointSequence(move_group, targets, logger);
 
             move_group.clearPathConstraints();
-            RCLCPP_INFO(logger, "Joint sequence complete — waiting for next command...");
+            // RCLCPP_INFO(logger, "Joint sequence complete — waiting for next command...");
         } else if (g_new_poses_available) {
             std::vector<TargetPose> targets;
             {

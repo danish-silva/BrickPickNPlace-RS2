@@ -30,7 +30,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
-from std_msgs.msg import String
+from std_msgs.msg import Float64MultiArray, String
 from geometry_msgs.msg import Pose, PoseStamped
 from vision_msgs.msg import Detection3DArray
 
@@ -67,6 +67,11 @@ GRIPPER_UPDATE_HZ   = 20.0    # publish rate of intermediate widths
 # Current output from brick_vision's node name + private topic "~/brick_pose".
 VISION_BRICK_POSE_TOPIC = '/brick_detector/brick_pose'
 VISION_DETECTIONS_TOPIC = '/brick_detections'
+
+# Demo joint targets published whenever /brick_detector/brick_pose receives any message.
+DEMO_JOINT_SEQUENCE: list[float] = [
+    0.0, -1.5708, 1.5708, -1.5708, -1.5708, 0.0,
+]
 
 
 # ===========================================================================
@@ -146,6 +151,7 @@ class BrickInteractionNode(Node):
 
         # --- Publishers ---
         self._status_pub = self.create_publisher(String, '/system_status', latched_qos)
+        self._ordered_joint_pub = self.create_publisher(Float64MultiArray, '/ordered_joint_array', 10)
 
         # --- Subscribers ---
         self.create_subscription(
@@ -248,6 +254,11 @@ class BrickInteractionNode(Node):
             f'pos=({brick.x:.3f}, {brick.y:.3f}, {brick.z:.3f}) '
             f'theta={math.degrees(brick.theta):.1f} deg'
         )
+
+        demo_msg = Float64MultiArray()
+        demo_msg.data = DEMO_JOINT_SEQUENCE
+        self._ordered_joint_pub.publish(demo_msg)
+        self.get_logger().info('Published demo joint targets to /ordered_joint_array.')
 
     # ------------------------------------------------------------------ #
     # Pick-and-place cycle                                                 #
