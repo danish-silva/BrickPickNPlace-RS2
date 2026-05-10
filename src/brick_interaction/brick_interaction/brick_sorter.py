@@ -30,6 +30,7 @@ class Brick:
     theta: float   # radians — orientation of brick's long axis
     colour: str    # 'red', 'blue', 'green', 'yellow'
     size: str      # '2x2', '2x4', '2x6', etc.
+    confidence: float = 1.0
 
 
 @dataclass
@@ -151,6 +152,7 @@ def bricks_from_detections(msg) -> list[Brick]:
         if not det.results:
             continue
         colour = det.results[0].hypothesis.class_id
+        confidence = float(det.results[0].hypothesis.score)
         p = det.bbox.center.position
         q = det.bbox.center.orientation
         bricks.append(Brick(
@@ -160,6 +162,7 @@ def bricks_from_detections(msg) -> list[Brick]:
             theta=_yaw_from_quaternion(q),
             colour=colour,
             size=_size_label_from_bbox(det.bbox.size),
+            confidence=confidence,
         ))
     return bricks
 
@@ -180,7 +183,27 @@ def brick_from_pose_stamped(msg) -> Brick:
         theta=_yaw_from_quaternion(q),
         colour='unknown',
         size='unknown',
+        confidence=1.0,
     )
+
+
+def slots_from_pose_array(msg) -> list[PlacementSlot]:
+    """
+    Convert a geometry_msgs/PoseArray of available build-zone slots.
+
+    The brick_vision detector publishes /brick_detector/available_slots as
+    PoseArray. Each pose is an open drop-zone slot in the detector frame.
+    """
+    slots = []
+    for i, pose in enumerate(msg.poses, start=1):
+        slots.append(PlacementSlot(
+            x=pose.position.x,
+            y=pose.position.y,
+            z=pose.position.z,
+            theta=_yaw_from_quaternion(pose.orientation),
+            label=f'vision_slot_{i}',
+        ))
+    return slots
 
 
 def _xy_distance(brick: Brick, reference: tuple) -> float:
@@ -203,6 +226,43 @@ def sort_by_distance(bricks: list, reference: tuple = ROBOT_BASE) -> list:
     return sorted(bricks, key=lambda b: _xy_distance(b, reference))
 
 
+def choose_nearest_eligible_brick(
+    bricks: list[Brick],
+    reference: tuple = ROBOT_BASE,
+    allowed_colours: list[str] | None = None,
+    allowed_sizes: list[str] | None = None,
+    min_confidence: float = 0.0,
+) -> Brick | None:
+    """
+    Return the nearest brick that passes colour, size, and confidence filters.
+
+    Empty colour/size filter lists mean "accept any". Unknown colour/size are
+    accepted unless an explicit allow-list is configured.
+    """
+    colour_filter = {c.lower() for c in (allowed_colours or []) if c}
+    size_filter = {s.lower() for s in (allowed_sizes or []) if s}
+
+    candidates = []
+    for brick in bricks:
+        if brick.confidence < min_confidence:
+            continue
+        if colour_filter and brick.colour.lower() not in colour_filter:
+            continue
+        if size_filter and brick.size.lower() not in size_filter:
+            continue
+        candidates.append(brick)
+
+    ordered = sort_by_distance(candidates, reference)
+    return ordered[0] if ordered else None
+
+
+def choose_nearest_slot(slots: list[PlacementSlot], brick: Brick) -> PlacementSlot | None:
+    """Return the open slot with the shortest XY travel from the selected brick."""
+    if not slots:
+        return None
+    return min(slots, key=lambda s: math.hypot(s.x - brick.x, s.y - brick.y))
+
+
 def format_sorted_summary(sorted_bricks: list, reference: tuple = ROBOT_BASE) -> list:
     """
     Return a list of human-readable strings describing the sorted pick order.
@@ -222,6 +282,6 @@ def format_sorted_summary(sorted_bricks: list, reference: tuple = ROBOT_BASE) ->
             f'  {i}. {brick.colour:<6} {brick.size:<3} | '
             f'pos=({brick.x:6.3f}, {brick.y:6.3f}) '
             f'theta={theta_deg:5.1f}° | '
-            f'dist={dist:.3f}m'
+            f'dist={dist:.3f}m | conf={brick.confidence:.2f}'
         )
     return lines

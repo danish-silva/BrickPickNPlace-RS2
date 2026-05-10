@@ -14,8 +14,10 @@ Valid state transitions:
     RUNNING   + motion failure   -> ERROR
     PAUSED    + "start"          -> RUNNING
     PAUSED    + "stop"           -> IDLE
-    COMPLETED + "start"/"stop"   -> IDLE   (reset for next cycle)
-    ERROR     + "start"/"stop"   -> IDLE   (reset for next cycle)
+    COMPLETED + "start"          -> RUNNING (start next cycle)
+    COMPLETED + "stop"           -> IDLE
+    ERROR     + "start"          -> RUNNING (retry after error)
+    ERROR     + "stop"           -> IDLE
     ANY       + "stop"           -> IDLE   (always safe to stop)
 """
 
@@ -39,9 +41,9 @@ _COMMAND_TRANSITIONS: dict[tuple[SystemState, str], SystemState] = {
     (SystemState.RUNNING,   'stop'):  SystemState.IDLE,
     (SystemState.PAUSED,    'start'): SystemState.RUNNING,
     (SystemState.PAUSED,    'stop'):  SystemState.IDLE,
-    (SystemState.COMPLETED, 'start'): SystemState.IDLE,
+    (SystemState.COMPLETED, 'start'): SystemState.RUNNING,
     (SystemState.COMPLETED, 'stop'):  SystemState.IDLE,
-    (SystemState.ERROR,     'start'): SystemState.IDLE,
+    (SystemState.ERROR,     'start'): SystemState.RUNNING,
     (SystemState.ERROR,     'stop'):  SystemState.IDLE,
 }
 

@@ -55,6 +55,7 @@ class MotionClient:
         self._node = node
         self._on_done = on_done
         self._pose_publisher = node.create_publisher(Float64MultiArray, 'ordered_pose_array', 10)
+        self._completion_timer = None
 
     def send_pose_goal(self, pose: Pose) -> None:
         """
@@ -68,4 +69,39 @@ class MotionClient:
         self._node.get_logger().info('Publishing pose to ordered_pose_array...')
         self._pose_publisher.publish(msg)
         # Assume success after publishing since move_to_position does not provide feedback.
-        self._node.create_timer(5.0, lambda: self._on_done(True))  # 5 seconds delay
+        self._schedule_done(5.0)
+
+    def send_pick_place_goal(
+        self,
+        brick_pose: Pose,
+        target_pose: Pose,
+        completion_delay_s: float = 1.0,
+    ) -> None:
+        """
+        Publish one pick/place pair for ur3e_motion_mtc.
+
+        The MTC node expects exactly 12 values:
+        [brick x, y, z, roll, pitch, yaw, target x, y, z, roll, pitch, yaw].
+        """
+        msg = Float64MultiArray()
+        msg.data = _pose_to_flat_array(brick_pose) + _pose_to_flat_array(target_pose)
+        self._node.get_logger().info(
+            'Publishing pick/place pair to ordered_pose_array...'
+        )
+        self._pose_publisher.publish(msg)
+        self._schedule_done(completion_delay_s)
+
+    def _schedule_done(self, delay_s: float) -> None:
+        if self._completion_timer is not None:
+            self._completion_timer.cancel()
+            self._node.destroy_timer(self._completion_timer)
+            self._completion_timer = None
+
+        def _complete_once() -> None:
+            if self._completion_timer is not None:
+                self._completion_timer.cancel()
+                self._node.destroy_timer(self._completion_timer)
+                self._completion_timer = None
+            self._on_done(True)
+
+        self._completion_timer = self._node.create_timer(delay_s, _complete_once)

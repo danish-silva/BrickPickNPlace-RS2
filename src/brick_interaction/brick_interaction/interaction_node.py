@@ -20,7 +20,10 @@ Responsibilities:
 Topics:
   Subscribes:  /brick_command        (std_msgs/String)              <- brick_gui
   Subscribes:  /brick_detector/brick_pose (geometry_msgs/PoseStamped) <- brick_vision
-  Subscribes:  /brick_detections     (vision_msgs/Detection3DArray) <- future perception
+  Subscribes:  /brick_detector/detections (vision_msgs/Detection3DArray) <- brick_vision
+  Subscribes:  /brick_detector/available_slots (geometry_msgs/PoseArray) <- brick_vision
+  Publishes:   /snapshot_trigger     (std_msgs/Empty)               -> brick_vision
+  Publishes:   /ordered_pose_array   (std_msgs/Float64MultiArray)   -> ur3e_motion_mtc
   Publishes:   /system_status        (std_msgs/String)              -> brick_gui
 """
 
@@ -30,8 +33,8 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
-from std_msgs.msg import Float64MultiArray, String
-from geometry_msgs.msg import Pose, PoseStamped
+from std_msgs.msg import Empty, String
+from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from vision_msgs.msg import Detection3DArray
 
 from brick_interaction.state_machine import StateMachine, SystemState
@@ -43,10 +46,13 @@ from brick_interaction.brick_sorter import (
     MOCK_BRICKS,
     PLACEMENT_SLOTS,
     ROBOT_BASE,
+    choose_nearest_eligible_brick,
+    choose_nearest_slot,
     sort_by_distance,
     format_sorted_summary,
     brick_from_pose_stamped,
     bricks_from_detections,
+    slots_from_pose_array,
 )
 
 
@@ -64,15 +70,25 @@ GRIPPER_CLOSE_WIDTH = 0.0     # fully closed
 GRIPPER_SPEED       = 0.05    # m/s — how fast the fingers travel
 GRIPPER_UPDATE_HZ   = 20.0    # publish rate of intermediate widths
 
-# Current output from brick_vision's node name + private topic "~/brick_pose".
+# Current outputs from brick_vision's node name + private topics.
 VISION_BRICK_POSE_TOPIC = '/brick_detector/brick_pose'
-VISION_DETECTIONS_TOPIC = '/brick_detections'
+VISION_DETECTIONS_TOPIC = '/brick_detector/detections'
+VISION_AVAILABLE_SLOTS_TOPIC = '/brick_detector/available_slots'
+VISION_SCAN_TRIGGER_TOPIC = '/snapshot_trigger'
 
-# Demo joint targets published whenever /brick_detector/brick_pose receives any message.
-DEMO_JOINT_SEQUENCE: list[float] = [
-    0.0, -1.5708, 1.5708, -1.5708, -1.5708, 0.0,
-]
+# MTC consumes one message containing exactly two poses: pick brick, place slot.
+MOTION_MODE = 'mtc'  # 'mtc' for ur3e_motion_mtc, 'stepwise' for ur3e_motion_cpp
+MTC_MOTION_COMPLETION_DELAY_S = 45.0
 
+# Scan loop timing. The motion package's MTC task returns to camera_home after
+# place, so each loop asks vision for a fresh snapshot from the scan position.
+SCAN_TIMEOUT_S = 8.0
+MAX_BRICKS_PER_RUN = 100
+
+# Brick selection criteria. Empty allow-lists mean "accept any".
+ELIGIBLE_COLOURS: list[str] = []
+ELIGIBLE_SIZES: list[str] = []
+MIN_DETECTION_CONFIDENCE = 0.30
 
 # ===========================================================================
 # PHASE ENUM — the 8-step sequence for each brick
@@ -105,25 +121,19 @@ _NEXT_PHASE = {
 # INTEGRATION POINTS — edit this block when connecting to other subsystems
 # ===========================================================================
 #
-# 1. MOTION PLANNING — ur3e_motion_cpp  *** ALREADY WIRED ***
-#    Every pick and place pose is sent to the MoveIt2 action server via
-#    MotionClient (brick_interaction/motion_client.py).
-#
-#    Action server : /move_action   (moveit_msgs/action/MoveGroup)
-#    Provided by   : move_group node, launched alongside ur3e_motion_cpp
-#
-#    Current stub  : send_pose_goal() plans to SAFE_HOME_ANGLES (joint-space),
-#                    ignoring the Cartesian pose argument, so the pipeline can
-#                    be tested end-to-end without real brick coordinates.
-#    To complete   : Replace the joint-constraint block in motion_client.py
-#                    with a PositionConstraint + OrientationConstraint built
-#                    from the pose argument. No changes needed in this file.
+# 1. MOTION PLANNING — ur3e_motion_mtc  *** WIRED ***
+#    On "start", this node publishes one /ordered_pose_array message containing
+#    [brick pose, target slot pose], exactly matching ur3e_motion_mtc's current
+#    std_msgs/Float64MultiArray contract. MTC's task should finish by returning
+#    to camera_home before this node requests the next vision scan.
 #
 # 2. VISION INPUT — perception subsystem  *** WIRED ***
 #    Current topic     : /brick_detector/brick_pose (geometry_msgs/PoseStamped)
 #                        Published by brick_vision. Contains the best brick's
 #                        position and angle, but not colour/size metadata.
-#    Future topic      : /brick_detections  (vision_msgs/Detection3DArray)
+#    Brick list        : /brick_detector/detections  (vision_msgs/Detection3DArray)
+#    Drop-zone slots   : /brick_detector/available_slots (geometry_msgs/PoseArray)
+#    Scan trigger      : /snapshot_trigger (std_msgs/Empty)
 #    Conversion        : bricks_from_detections() in brick_sorter.py converts
 #                        Detection3DArray → list[Brick]
 #    NOTE: Coordinates arrive in camera_color_optical_frame.
@@ -151,7 +161,9 @@ class BrickInteractionNode(Node):
 
         # --- Publishers ---
         self._status_pub = self.create_publisher(String, '/system_status', latched_qos)
-        self._ordered_joint_pub = self.create_publisher(Float64MultiArray, '/ordered_joint_array', 10)
+        self._scan_trigger_pub = self.create_publisher(
+            Empty, VISION_SCAN_TRIGGER_TOPIC, 10
+        )
 
         # --- Subscribers ---
         self.create_subscription(
@@ -162,6 +174,9 @@ class BrickInteractionNode(Node):
         )
         self.create_subscription(
             Detection3DArray, VISION_DETECTIONS_TOPIC, self._detection_callback, 1
+        )
+        self.create_subscription(
+            PoseArray, VISION_AVAILABLE_SLOTS_TOPIC, self._available_slots_callback, 1
         )
 
         # --- State machine ---
@@ -183,6 +198,12 @@ class BrickInteractionNode(Node):
         # --- Perception cache ---
         self._latest_detections: Detection3DArray | None = None
         self._latest_vision_pose: PoseStamped | None = None
+        self._latest_available_slots: PoseArray | None = None
+        self._fresh_detections = False
+        self._fresh_available_slots = False
+        self._waiting_for_scan = False
+        self._scan_timeout_timer = None
+        self._placed_count = 0
 
         # --- Brick pick queue ---
         self._brick_queue: list[Brick] = []
@@ -222,6 +243,10 @@ class BrickInteractionNode(Node):
             )
             return
 
+        if self._sm.state != SystemState.RUNNING:
+            self._waiting_for_scan = False
+            self._cancel_scan_timeout()
+
         if self._sm.state == SystemState.RUNNING and prev_state != SystemState.RUNNING:
             self._start_pick_and_place_cycle()
 
@@ -240,9 +265,22 @@ class BrickInteractionNode(Node):
     def _detection_callback(self, msg: Detection3DArray) -> None:
         """Caches the latest brick detections from the perception subsystem."""
         self._latest_detections = msg
+        if self._waiting_for_scan:
+            self._fresh_detections = True
         self.get_logger().info(
             f'Received {len(msg.detections)} brick detection(s) from perception.'
         )
+        self._try_process_fresh_scan()
+
+    def _available_slots_callback(self, msg: PoseArray) -> None:
+        """Caches the latest open drop-zone slots from brick_vision."""
+        self._latest_available_slots = msg
+        if self._waiting_for_scan:
+            self._fresh_available_slots = True
+        self.get_logger().info(
+            f'Received {len(msg.poses)} available drop-zone slot(s) from perception.'
+        )
+        self._try_process_fresh_scan()
 
     def _vision_pose_callback(self, msg: PoseStamped) -> None:
         """Caches the latest best-brick pose published by brick_vision."""
@@ -255,28 +293,25 @@ class BrickInteractionNode(Node):
             f'theta={math.degrees(brick.theta):.1f} deg'
         )
 
-        demo_msg = Float64MultiArray()
-        demo_msg.data = DEMO_JOINT_SEQUENCE
-        self._ordered_joint_pub.publish(demo_msg)
-        self.get_logger().info('Published demo joint targets to /ordered_joint_array.')
-
     # ------------------------------------------------------------------ #
     # Pick-and-place cycle                                                 #
     # ------------------------------------------------------------------ #
 
-    def _bricks_to_use(self) -> list[Brick]:
+    def _bricks_to_use(self, allow_fallback: bool = True) -> list[Brick]:
         """
         Returns the brick list for this cycle.
 
         Uses real perception data if available, otherwise falls back
         to MOCK_BRICKS for testing without the camera.
         """
-        if self._latest_detections is not None and self._latest_detections.detections:
+        if self._latest_detections is not None:
             bricks = bricks_from_detections(self._latest_detections)
             self.get_logger().info(
                 f'Using {len(bricks)} brick(s) from perception.'
             )
             return bricks
+        if not allow_fallback:
+            return []
         if self._latest_vision_pose is not None:
             self.get_logger().info(
                 'Using latest brick_vision pose. Colour/size are unavailable '
@@ -287,6 +322,27 @@ class BrickInteractionNode(Node):
             'No perception data — falling back to MOCK_BRICKS.'
         )
         return list(MOCK_BRICKS)
+
+    def _slots_to_use(self, allow_fallback: bool = True) -> list[PlacementSlot]:
+        """
+        Returns the current open drop-zone slots.
+
+        Uses brick_vision's /brick_detector/available_slots when present,
+        otherwise falls back to the calibrated/static slots for bench tests.
+        """
+        if self._latest_available_slots is not None:
+            slots = slots_from_pose_array(self._latest_available_slots)
+            self.get_logger().info(
+                f'Using {len(slots)} open slot(s) from brick_vision.'
+            )
+            return slots
+        if not allow_fallback:
+            return []
+
+        self.get_logger().warn(
+            'No available_slots from brick_vision — falling back to PLACEMENT_SLOTS.'
+        )
+        return list(PLACEMENT_SLOTS)
 
     def _approach_pose(self, x: float, y: float, z: float, theta: float) -> Pose:
         """Pose at safe approach height above the target."""
@@ -308,15 +364,40 @@ class BrickInteractionNode(Node):
         pose.orientation.w = math.cos(theta / 2.0)
         return pose
 
+    def _target_pose(self, x: float, y: float, z: float, theta: float) -> Pose:
+        """Raw object/slot pose for MTC pick-and-place planning."""
+        pose = Pose()
+        pose.position.x = x
+        pose.position.y = y
+        pose.position.z = z
+        pose.orientation.z = math.sin(theta / 2.0)
+        pose.orientation.w = math.cos(theta / 2.0)
+        return pose
+
     def _start_pick_and_place_cycle(self) -> None:
         """
-        Loads the brick list, sorts by distance from the arm base, logs the
-        full pick order, and begins the first 8-step sequence.
+        Starts the scan-pick-place loop.
+
+        MTC mode does one brick per scan:
+          scan -> choose nearest eligible brick + nearest open slot -> motion
+          -> MTC returns to camera_home -> scan again.
         """
         if self._sm.state != SystemState.RUNNING:
             return
 
+        self._placed_count = 0
+
+        if MOTION_MODE == 'mtc':
+            self._request_fresh_scan()
+            return
+
+        # Legacy stepwise mode uses the currently cached brick list.
         bricks = sort_by_distance(self._bricks_to_use(), ROBOT_BASE)
+        if not bricks:
+            self.get_logger().error('No bricks available for pick-and-place.')
+            self._sm.set_error()
+            return
+
         self._brick_queue = bricks
         self._queue_index = 0
 
@@ -325,6 +406,121 @@ class BrickInteractionNode(Node):
 
         self._phase = Phase.PICK_APPROACH
         self._execute_phase()
+
+    def _request_fresh_scan(self) -> None:
+        """Ask brick_vision for a new snapshot and wait for matching outputs."""
+        if self._sm.state != SystemState.RUNNING:
+            return
+
+        if self._placed_count >= MAX_BRICKS_PER_RUN:
+            self.get_logger().warn(
+                f'Stopping after MAX_BRICKS_PER_RUN={MAX_BRICKS_PER_RUN}.'
+            )
+            self._sm.set_completed()
+            return
+
+        self._waiting_for_scan = True
+        self._fresh_detections = False
+        self._fresh_available_slots = False
+        self._latest_detections = None
+        self._latest_available_slots = None
+
+        self._cancel_scan_timeout()
+        self._scan_timeout_timer = self.create_timer(
+            SCAN_TIMEOUT_S, self._on_scan_timeout
+        )
+
+        self.get_logger().info(
+            f'Requesting fresh brick_vision snapshot on {VISION_SCAN_TRIGGER_TOPIC}.'
+        )
+        self._scan_trigger_pub.publish(Empty())
+
+    def _try_process_fresh_scan(self) -> None:
+        """Proceed once the current scan has both detections and available slots."""
+        if (
+            not self._waiting_for_scan
+            or not self._fresh_detections
+            or not self._fresh_available_slots
+            or self._sm.state != SystemState.RUNNING
+        ):
+            return
+
+        self._waiting_for_scan = False
+        self._cancel_scan_timeout()
+
+        bricks = sort_by_distance(self._bricks_to_use(allow_fallback=False), ROBOT_BASE)
+        if not bricks:
+            self.get_logger().info(
+                f'No bricks in latest scan. Placed {self._placed_count} brick(s); cycle complete.'
+            )
+            self._sm.set_completed()
+            return
+
+        for line in format_sorted_summary(bricks, ROBOT_BASE):
+            self.get_logger().info(line)
+
+        self._publish_mtc_pick_place_pair(bricks, allow_slot_fallback=False)
+
+    def _on_scan_timeout(self) -> None:
+        """Stop the loop if vision does not answer a scan request."""
+        self._cancel_scan_timeout()
+        if not self._waiting_for_scan or self._sm.state != SystemState.RUNNING:
+            return
+        self._waiting_for_scan = False
+        self.get_logger().error(
+            'Timed out waiting for fresh brick_vision detections and available_slots.'
+        )
+        self._sm.set_error()
+
+    def _cancel_scan_timeout(self) -> None:
+        if self._scan_timeout_timer is not None:
+            self._scan_timeout_timer.cancel()
+            self.destroy_timer(self._scan_timeout_timer)
+            self._scan_timeout_timer = None
+
+    def _publish_mtc_pick_place_pair(
+        self,
+        bricks: list[Brick],
+        allow_slot_fallback: bool = True,
+    ) -> None:
+        """Select one brick and one open slot, then publish the MTC contract."""
+        brick = choose_nearest_eligible_brick(
+            bricks,
+            ROBOT_BASE,
+            allowed_colours=ELIGIBLE_COLOURS,
+            allowed_sizes=ELIGIBLE_SIZES,
+            min_confidence=MIN_DETECTION_CONFIDENCE,
+        )
+        if brick is None:
+            self.get_logger().error(
+                'No brick met the configured criteria: '
+                f'colours={ELIGIBLE_COLOURS or "any"}, '
+                f'sizes={ELIGIBLE_SIZES or "any"}, '
+                f'min_confidence={MIN_DETECTION_CONFIDENCE:.2f}'
+            )
+            self._sm.set_error()
+            return
+
+        slot = choose_nearest_slot(
+            self._slots_to_use(allow_fallback=allow_slot_fallback),
+            brick,
+        )
+        if slot is None:
+            self.get_logger().error('No open drop-zone slot available.')
+            self._sm.set_error()
+            return
+
+        self.get_logger().info(
+            'Selected pick/place pair: '
+            f'brick {brick.colour} {brick.size} '
+            f'at ({brick.x:.3f}, {brick.y:.3f}, {brick.z:.3f}) '
+            f'-> {slot.label} at ({slot.x:.3f}, {slot.y:.3f}, {slot.z:.3f})'
+        )
+        self._motion.send_pick_place_goal(
+            self._target_pose(brick.x, brick.y, brick.z, brick.theta),
+            self._target_pose(slot.x, slot.y, slot.z, slot.theta),
+            completion_delay_s=MTC_MOTION_COMPLETION_DELAY_S,
+        )
 
     def _execute_phase(self) -> None:
         """
@@ -383,12 +579,23 @@ class BrickInteractionNode(Node):
         On failure: set error state and stop the cycle.
         """
         if not success:
-            self.get_logger().error(
-                f'Step failed during {self._phase.value} of brick '
-                f'{self._queue_index + 1}/{len(self._brick_queue)} '
-                f'— stopping cycle.'
-            )
+            if MOTION_MODE == 'mtc':
+                self.get_logger().error('MTC pick/place command failed — stopping cycle.')
+            else:
+                self.get_logger().error(
+                    f'Step failed during {self._phase.value} of brick '
+                    f'{self._queue_index + 1}/{len(self._brick_queue)} '
+                    f'— stopping cycle.'
+                )
             self._sm.set_error()
+            return
+
+        if MOTION_MODE == 'mtc':
+            self._placed_count += 1
+            self.get_logger().info(
+                f'MTC pick/place assumed complete for brick {self._placed_count}; requesting next scan.'
+            )
+            self._request_fresh_scan()
             return
 
         next_phase = _NEXT_PHASE[self._phase]
