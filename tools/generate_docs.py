@@ -1,0 +1,700 @@
+#!/usr/bin/env python3
+"""
+Generate docs/brick_vision_subsystem.docx — a comprehensive subsystem
+explainer suitable for viva preparation and design-doc review.
+
+Usage:
+    python3 tools/generate_docs.py
+"""
+
+from pathlib import Path
+from docx import Document
+from docx.shared import Pt, RGBColor, Inches, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+
+
+ROOT     = Path(__file__).resolve().parent.parent
+DOC_PATH = ROOT / "docs" / "brick_vision_subsystem.docx"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Style helpers
+# ──────────────────────────────────────────────────────────────────────
+
+def _set_cell_shading(cell, hex_fill):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex_fill)
+    tc_pr.append(shd)
+
+
+def heading(doc, text, level=1):
+    h = doc.add_heading(text, level=level)
+    for run in h.runs:
+        run.font.color.rgb = RGBColor(0x1F, 0x2D, 0x3D)
+    return h
+
+
+def para(doc, text, bold=False, italic=False, mono=False, size=11):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.bold = bold
+    run.italic = italic
+    run.font.size = Pt(size)
+    if mono:
+        run.font.name = "Consolas"
+    return p
+
+
+def bullets(doc, items):
+    for it in items:
+        p = doc.add_paragraph(style="List Bullet")
+        run = p.add_run(it)
+        run.font.size = Pt(11)
+
+
+def code_block(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Cm(0.4)
+    run = p.add_run(text)
+    run.font.name = "Consolas"
+    run.font.size = Pt(9)
+    run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
+    # light grey shading on the whole paragraph
+    p_pr = p._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), "F4F4F4")
+    p_pr.append(shd)
+
+
+def make_table(doc, headers, rows, header_fill="1F2D3D"):
+    table = doc.add_table(rows=1 + len(rows), cols=len(headers))
+    table.style = "Light Grid Accent 1"
+    table.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    # Header row
+    for i, h in enumerate(headers):
+        cell = table.rows[0].cells[i]
+        cell.text = ""
+        run = cell.paragraphs[0].add_run(h)
+        run.bold = True
+        run.font.size = Pt(10)
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        _set_cell_shading(cell, header_fill)
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+    # Body rows
+    for r, row in enumerate(rows, start=1):
+        for c, val in enumerate(row):
+            cell = table.rows[r].cells[c]
+            cell.text = ""
+            for line in str(val).split("\n"):
+                p = cell.add_paragraph()
+                run = p.add_run(line)
+                run.font.size = Pt(10)
+            # remove the empty first paragraph
+            cell._tc.remove(cell.paragraphs[0]._p)
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+    doc.add_paragraph()  # spacing
+
+
+def callout(doc, kind, text):
+    """Tip / Note / Warning callout."""
+    colors = {
+        "tip":     ("D5E8D4", "Tip"),
+        "note":    ("DAE8FC", "Note"),
+        "warning": ("F8CECC", "Warning"),
+    }
+    fill, label = colors[kind]
+    table = doc.add_table(rows=1, cols=1)
+    table.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    cell = table.rows[0].cells[0]
+    _set_cell_shading(cell, fill)
+    cell.text = ""
+    p = cell.paragraphs[0]
+    r = p.add_run(f"{label}: ")
+    r.bold = True
+    r.font.size = Pt(10)
+    r2 = p.add_run(text)
+    r2.font.size = Pt(10)
+    doc.add_paragraph()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Document
+# ──────────────────────────────────────────────────────────────────────
+
+def build_doc():
+    doc = Document()
+
+    # Page margins
+    for section in doc.sections:
+        section.top_margin    = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+        section.left_margin   = Cm(2.0)
+        section.right_margin  = Cm(2.0)
+
+    # Default style
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    # ── Title ──────────────────────────────────────────────────────────
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = title.add_run("brick_vision")
+    r.bold = True
+    r.font.size = Pt(28)
+    r.font.color.rgb = RGBColor(0x1F, 0x2D, 0x3D)
+
+    sub = doc.add_paragraph()
+    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = sub.add_run("Perception & Mapping Subsystem — Comprehensive Reference")
+    r.italic = True
+    r.font.size = Pt(14)
+
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = meta.add_run(
+        "Project: LeBrick n' Place  •  Team: LeBrick James  •  Platform: ROS 2 Humble + UR3e\n"
+        "Generated by tools/generate_docs.py"
+    )
+    r.font.size = Pt(10)
+    r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+    doc.add_paragraph()
+
+    # ── 1. Purpose ─────────────────────────────────────────────────────
+    heading(doc, "1. Purpose of the subsystem", level=1)
+    para(doc,
+         "The brick_vision package is the perception layer of the pick-and-place pipeline. Its job is to look at the workspace through an Intel RealSense D435i depth camera and answer three questions for every cycle:")
+    bullets(doc, [
+        "Where are the bricks I can pick up? (3D position, orientation, and colour of each brick on the pickup side of the table)",
+        "Where on the build plate is it still legal to place a brick? (a list of free 4×2 slots respecting a 1-stud gap rule)",
+        "How confident am I about each detection? (so downstream logic can drop low-confidence picks)",
+    ])
+    para(doc,
+         "It runs as a single ROS 2 node, brick_detector, which the interaction node queries by topic. The vision algorithms themselves are also runnable standalone (without ROS) for development and tuning.")
+
+    callout(doc, "note",
+            "The vision node never talks to the robot directly. It publishes brick poses in the camera frame; the interaction node is responsible for converting those into the robot base frame via tf2 and sending motion goals to MoveIt.")
+
+    # ── 2. Where it fits ──────────────────────────────────────────────
+    heading(doc, "2. Where brick_vision fits in the system", level=1)
+    para(doc,
+         "Five ROS 2 packages cooperate in this project. brick_vision is at the head of the data flow:")
+    code_block(doc, """\
+[ RealSense D435i ]
+        │ (USB)
+        ▼
+[ brick_vision / brick_detector ]
+        │  publishes
+        │     /brick_detector/detections     (Detection3DArray)
+        │     /brick_detector/available_slots (PoseArray)
+        │     /brick_detector/free_studs      (PoseArray)
+        │     /brick_detector/brick_pose      (PoseStamped)
+        │     /brick_detector/detection_image (Image)
+        │  subscribes
+        │     /snapshot_trigger (Empty)
+        ▼
+[ brick_interaction / interaction_node ]
+        │  subscribes /brick_detector/detections
+        │  uses tf2 to transform camera → base_link
+        │  publishes /snapshot_trigger when arm reaches home
+        │  sends MoveIt goals
+        ▼
+[ ur3e_motion + ur_moveit_config ]   ←→   [ onrobot_driver (gripper) ]
+        ▼
+[ UR3e robot ]""")
+    para(doc,
+         "Two other packages also interact with brick_vision: brick_gui (visualises the detections topic) and voice_interface (selects which colour the user wants picked).")
+
+    # ── 3. High-level pipeline ────────────────────────────────────────
+    heading(doc, "3. End-to-end pipeline", level=1)
+    para(doc,
+         "Each captured frame goes through three stages before publishing:")
+    code_block(doc, """\
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ 1. Capture & ROI                                                │
+   │    RealSense pipeline → aligned colour + depth → workspace crop │
+   └─────────────────────────────────────────────────────────────────┘
+                                  │
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ 2. Brick detection (hybrid: colour + shape + studs)             │
+   │    HSV mask → contours → aspect/size check → HoughCircles studs │
+   │    → confidence score → 3D pose                                 │
+   └─────────────────────────────────────────────────────────────────┘
+                                  │
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ 3. Build-zone analysis                                          │
+   │    Linear-interpolated 14×12 stud grid → occupancy via oriented │
+   │    bounding box → sliding 4×2 slot search → midpoints           │
+   └─────────────────────────────────────────────────────────────────┘
+                                  │
+                       Publish on five topics""")
+
+    # ── 4. Brick detection deep dive ──────────────────────────────────
+    heading(doc, "4. Brick detection — deep dive", level=1)
+
+    heading(doc, "4.1 Why hybrid (colour + studs)?", level=2)
+    para(doc,
+         "Either approach alone is brittle. Pure shape matching gives false positives on any rectangle of the right size. Pure colour segmentation merges adjacent bricks of the same colour and trips on shadows. By combining them — finding colour-based candidates first, then verifying with stud detection — we get high precision without losing recall.")
+
+    heading(doc, "4.2 Step-by-step", level=2)
+    bullets(doc, [
+        "Step 1 — Workspace ROI crop: only pixels inside the calibrated rectangle are searched. Cuts CPU and rejects background clutter.",
+        "Step 2 — Per-colour HSV mask: builds a binary mask for each entry in COLOUR_RANGES, e.g. red, blue, green. Red wraps around the hue circle so it uses two ranges.",
+        "Step 3 — Contour extraction: cv2.findContours on each mask. Contours under MIN_CONTOUR_AREA are dropped.",
+        "Step 4 — Oriented bounding box: cv2.minAreaRect gives the smallest rotated rectangle around each contour, yielding (cx, cy), (w_px, h_px), angle.",
+        "Step 5 — Aspect-ratio gate: long/short axis must be 2.0 ± ASPECT_TOL (0.35) for a 4×2 brick.",
+        "Step 6 — Metric-size gate: pixel size → metres using depth at the contour centre. Must be 100×50 mm ± SIZE_TOL.",
+        "Step 7 — Stud verification: a sub-ROI inside the candidate is searched with HoughCircles. Stud count and rough geometry are checked.",
+        "Step 8 — Confidence: shape-only base score (up to 0.65) + stud bonus (up to 0.35) = final score in [0, 1].",
+        "Step 9 — 3D pose: median depth in a 21×21 sample window around the centre → deprojected to metres via pyrealsense2 intrinsics.",
+    ])
+
+    heading(doc, "4.3 Depth sampling — why median?", level=2)
+    para(doc,
+         "The D435i produces noisy depth, especially near edges. Taking the depth at a single pixel can give an outlier reading (or 0 m). The detector samples a 21×21 window of pixels around the brick centre, filters values outside [0.05, 2.0] m, and takes the median. This is robust to a small number of zero-or-NaN readings.")
+
+    callout(doc, "tip",
+            "When tuning, remember: depth quality dominates metric-size accuracy. If SIZE_TOL needs to be set above 0.4 to detect anything, the surface_depth in your calibration is probably wrong — fix that first.")
+
+    # ── 5. Build-zone analysis ────────────────────────────────────────
+    heading(doc, "5. Build-zone analysis — deep dive", level=1)
+
+    heading(doc, "5.1 Why this exists", level=2)
+    para(doc,
+         "Even if we know where every brick is, we still need to know where there's space to place a new one. The build plate is a 12-column × 14-row stud grid (168 studs total). The interaction node needs a list of free 4×2 areas so it can pick a target.")
+
+    heading(doc, "5.2 Grid construction (2-click calibration)", level=2)
+    para(doc,
+         "The user clicks the top-left stud centre, then the bottom-right stud centre, of the physical build plate in the OpenCV preview. The 168 stud pixel positions are then linearly interpolated between those two corners:")
+    code_block(doc, """\
+for row in range(14):
+    for col in range(12):
+        u = col / 11
+        v = row / 13
+        px = TL_x + u * (BR_x - TL_x)
+        py = TL_y + v * (BR_y - TL_y)
+""")
+    para(doc,
+         "Each stud's 3D position is then obtained by deprojecting (px, py) at the surface_depth from calibration.")
+    callout(doc, "warning",
+            "This assumes the build plate is axis-aligned with the camera. If you rotate the plate noticeably, you'll need to upgrade to a 4-click perspective calibration (the algorithm logic is the same, only the grid construction changes).")
+
+    heading(doc, "5.3 Occupancy decision", level=2)
+    para(doc,
+         "For each detected brick we form its oriented bounding box (centre, half-width, half-height, yaw). Then for each of the 168 studs we rotate the stud pixel coordinate into the brick's frame and check whether |dx| ≤ half-width and |dy| ≤ half-height. Any stud inside any brick's footprint is marked occupied.")
+
+    heading(doc, "5.4 Slot search", level=2)
+    para(doc,
+         "We slide a 4×2 window across the grid in both orientations (4-wide × 2-tall, and 2-wide × 4-tall) — i.e. searching for both orientations a brick can be placed in. A window is accepted as a legal slot iff:")
+    bullets(doc, [
+        "All 8 studs in the window are unoccupied.",
+        "The surrounding 1-stud ring is either unoccupied or off-grid (the gap-rule).",
+    ])
+    para(doc,
+         "Each accepted slot publishes its midpoint and the yaw corresponding to its orientation.")
+
+    # ── 6. Configuration methods ──────────────────────────────────────
+    heading(doc, "6. Configuration methods (three layers)", level=1)
+    para(doc, "There are three places you can change behaviour, from most static to most dynamic:")
+    make_table(doc,
+        ["Layer", "Where it lives", "When to use it", "Rebuild needed?"],
+        [
+            ["Compile-time constants",
+             "Top of brick_detector.py",
+             "Physical brick/scene constants, detector thresholds",
+             "Yes (colcon)"],
+            ["ROS 2 parameters",
+             "--ros-args -p name:=val\nor launch file",
+             "Runtime behaviour: mode, trigger topic, preview, frames",
+             "No"],
+            ["Interactive calibration",
+             "OpenCV window keys c and b",
+             "Geometry that depends on physical setup\n(workspace ROI, build-plate corners)",
+             "No (saved to disk)"],
+        ])
+
+    heading(doc, "6.1 Calibration file", level=2)
+    para(doc,
+         "Stored canonically at ~/.brick_vision/workspace_calibration.json (override with BRICK_VISION_CALIBRATION env var). Format:")
+    code_block(doc, """\
+{
+    "roi":            [x, y, w, h],          // workspace rectangle (pixels)
+    "surface_depth":  0.42,                  // metres
+    "build_zone_tl":  [px, py],              // top-left stud centre (pixels)
+    "build_zone_br":  [px, py]               // bottom-right stud centre (pixels)
+}""")
+    para(doc,
+         "A legacy fallback is read from src/brick_vision/config/workspace_calibration.json if the canonical file is missing.")
+
+    # ── 7. Parameter reference ────────────────────────────────────────
+    heading(doc, "7. Parameter reference — what each one means", level=1)
+    para(doc, "Each table below shows: default value, what the parameter controls, and how to tune it (what to do when you see specific symptoms). This is the part to focus on for viva — be ready to justify each default.")
+
+    heading(doc, "7.1 Physical geometry (compile-time)", level=2)
+    make_table(doc,
+        ["Constant", "Default", "Controls", "When to change"],
+        [
+            ["BRICK_LENGTH_M", "0.100 m", "Long axis (4 studs) for size check",
+             "Different brick size (e.g. swap to 6×2)"],
+            ["BRICK_WIDTH_M", "0.050 m", "Short axis (2 studs) for size check",
+             "Same as above"],
+            ["STUD_DIAMETER_M", "0.015 m", "Expected stud radius for HoughCircles",
+             "DUPLO bricks (~0.030 m)"],
+            ["STUD_PITCH_M", "0.025 m", "Centre-to-centre stud spacing",
+             "Only changes for DUPLO; leave for LEGO"],
+            ["BRICK_STUDS_LONG × _SHORT", "4 × 2", "Slot-search window dimensions",
+             "Match the brick footprint you pick"],
+        ])
+
+    heading(doc, "7.2 Detection tolerances (most tuned)", level=2)
+    make_table(doc,
+        ["Constant", "Default", "Increase → ", "Decrease → ", "Symptom-driven tuning"],
+        [
+            ["ASPECT_TOL", "0.35",
+             "More candidates pass (incl. junk)",
+             "Stricter; rejects oblique-view bricks",
+             "Raise to ~0.45 if oblique angles miss"],
+            ["SIZE_TOL", "0.30",
+             "Tolerates noisy depth",
+             "Rejects bricks where depth is off",
+             "Raise if depth is noisy; else fix calibration"],
+            ["MIN_CONTOUR_AREA", "500 px²",
+             "Rejects more small blobs",
+             "Catches tiny far-away bricks",
+             "Lower for far-mounted camera; raise for cluttered backgrounds"],
+            ["HOUGH_RADIUS_TOL", "0.50",
+             "More circles accepted",
+             "Stricter stud verification",
+             "Raise (~0.6) if studs fail to verify on otherwise-correct bricks"],
+            ["MIN_CIRCULARITY", "0.55",
+             "Stricter — requires near-perfect circles",
+             "Tolerates elliptical studs",
+             "Lower for oblique camera angles (>30°)"],
+        ])
+
+    heading(doc, "7.3 Confidence formula", level=2)
+    code_block(doc, """\
+confidence = base + bonus,   clamped to [0, 1]
+    base  = CONF_BASE_MAX − aspect_err − size_err          # up to 0.65
+    bonus = (studs_found / 8) × CONF_STUD_BONUS            # up to 0.35
+            if studs_found ≥ MIN_STUDS_FOR_BONUS else 0
+""")
+    make_table(doc,
+        ["Constant", "Default", "Meaning"],
+        [
+            ["CONF_BASE_MAX", "0.65",
+             "Cap on shape-only confidence. Forces stud verification to push above 0.65."],
+            ["CONF_STUD_BONUS", "0.35",
+             "Weight stud verification adds. Higher = harder to be confident without studs."],
+            ["MIN_STUDS_FOR_BONUS", "2",
+             "Need this many studs before any bonus is granted."],
+        ])
+    para(doc,
+         "Implication for the interaction node: filter detections to e.g. confidence ≥ 0.7 to ensure stud verification fired, or ≥ 0.6 to allow shape-only detections through.")
+
+    heading(doc, "7.4 Colour thresholds", level=2)
+    code_block(doc, """\
+COLOUR_RANGES = [
+    ("red",     [(0,90,90),  (10,255,255)],
+                [(170,90,90),(179,255,255)]),    # wraps the hue circle
+    ("orange",  [(11,90,90), (25,255,255)]),
+    ("yellow",  [(26,90,90), (34,255,255)]),
+    ("green",   [(35,40,40), (85,255,255)]),
+    ("blue",    [(86,90,40), (130,255,255)]),
+    ("purple",  [(131,40,40),(169,255,255)]),
+]
+BLACK_V_MAX = 60       # V (brightness) ceiling for black
+BLACK_S_MAX = 120      # S (saturation) ceiling for black
+""")
+    make_table(doc,
+        ["Tuning need", "What to change"],
+        [
+            ["Red misclassified as orange under warm light",
+             "Move red/orange boundary up: (11,…) → (15,…)"],
+            ["Black bricks missed under bright lights",
+             "Raise BLACK_V_MAX to ~80"],
+            ["Black detected on coloured bricks in shadow",
+             "Lower BLACK_V_MAX to ~40 and/or BLACK_S_MAX"],
+            ["Green confused with blue at low saturation",
+             "Raise the green minimum S from 40 to 60+"],
+            ["White surface bleeding into detections",
+             "White is excluded by design; if it bleeds, tighten ROI"],
+        ])
+
+    heading(doc, "7.5 Build-zone parameters", level=2)
+    make_table(doc,
+        ["Constant", "Default", "Meaning / when to change"],
+        [
+            ["BUILD_GRID_COLS × BUILD_GRID_ROWS", "12 × 14",
+             "Build-plate stud count. Update if you swap to a different plate size."],
+            ["PLACEMENT_GAP_STUDS", "1",
+             "Required free-stud ring around each placed brick. Set 0 to allow bricks to touch."],
+        ])
+
+    heading(doc, "7.6 ROS 2 parameters", level=2)
+    make_table(doc,
+        ["Parameter", "Default", "Tuning rationale"],
+        [
+            ["mode", "\"on_trigger\"",
+             "Use \"continuous\" only for debug. Continuous wastes CPU and produces jittery poses while the arm is mid-motion."],
+            ["trigger_topic", "\"/snapshot_trigger\"",
+             "Rename if another node uses this name. Type stays std_msgs/Empty."],
+            ["snapshot_frames", "5",
+             "More frames → better best-of-N choice but higher trigger-to-publish latency (~30 ms per frame). Lower to 3 for snappy debug; raise to 8–10 for noisy scenes."],
+            ["show_preview", "true",
+             "Set false for headless/SSH or production runs on the robot PC."],
+        ])
+
+    # ── 8. ROS interface summary ──────────────────────────────────────
+    heading(doc, "8. ROS interface summary", level=1)
+
+    heading(doc, "8.1 Subscribed", level=2)
+    make_table(doc,
+        ["Topic", "Type", "Purpose"],
+        [
+            ["/snapshot_trigger (overridable)", "std_msgs/Empty",
+             "In on_trigger mode: take one snapshot now."],
+        ])
+
+    heading(doc, "8.2 Published (all under /brick_detector/)", level=2)
+    make_table(doc,
+        ["Topic", "Type", "Latched?", "Purpose"],
+        [
+            ["~/detection_image", "sensor_msgs/Image", "No",
+             "Annotated camera feed (visual debug stream)."],
+            ["~/detections", "vision_msgs/Detection3DArray", "Yes (on_trigger)",
+             "MAIN topic. Pose + size + colour + confidence bound per brick."],
+            ["~/brick_pose", "geometry_msgs/PoseStamped", "Yes (on_trigger)",
+             "Convenience — first brick only."],
+            ["~/free_studs", "geometry_msgs/PoseArray", "Yes (on_trigger)",
+             "Every individual free stud (diagnostic)."],
+            ["~/available_slots", "geometry_msgs/PoseArray", "Yes (on_trigger)",
+             "MAIN placement-target topic. Midpoint of each legal 4×2 area."],
+        ])
+    para(doc,
+         "All headers stamp frame_id = \"camera_color_optical_frame\". The interaction node uses tf2 to transform to base_link before sending MoveIt goals.")
+
+    heading(doc, "8.3 Why latched (TRANSIENT_LOCAL) QoS?", level=2)
+    para(doc,
+         "In on_trigger mode, a publish happens only when the arm reaches home (rare, event-driven). A subscriber that starts after a snapshot — e.g. interaction_node launched late — would otherwise miss it entirely and have to wait for the next home arrival. Latching means the subscriber gets the most recent snapshot's results immediately on connect.")
+
+    # ── 9. Operating modes ────────────────────────────────────────────
+    heading(doc, "9. Operating modes", level=1)
+    make_table(doc,
+        ["Mode", "Behaviour", "Frame rate", "When to use"],
+        [
+            ["on_trigger (default)",
+             "Subscribes to /snapshot_trigger. On each Empty message, captures snapshot_frames frames, scores them by len(detections) + 0.001*Σ(confidences), keeps the best, publishes once on the latched topics.",
+             "Event-driven",
+             "Production. Vision is decoupled from the arm cycle and never sees the arm in-frame."],
+            ["continuous",
+             "Internal 15 Hz timer drives the detection loop. Every cycle is published. Latched QoS is not used.",
+             "~15 Hz",
+             "Debug and tuning. Watch detection_image in rqt_image_view, tweak parameters live."],
+        ])
+
+    heading(doc, "9.1 Why on_trigger is the default", level=2)
+    bullets(doc, [
+        "Brick poses don't drift between picks — once it's been seen, its position is known until the arm touches it.",
+        "Detection is computationally heavy (HSV + contours + Hough + depth lookup × N bricks). Running 15× per second on every frame is wasteful.",
+        "The arm regularly enters the camera frame during motion. Continuous mode would publish polluted detections; on_trigger fires only when the arm is parked at home.",
+    ])
+
+    # ── 10. Standalone vs ROS mode ────────────────────────────────────
+    heading(doc, "10. Standalone mode (no ROS)", level=1)
+    para(doc,
+         "Running brick_detector.py directly (python3 src/brick_vision/brick_vision/brick_detector.py) starts an OpenCV-only loop that does the same detection but doesn't publish. Useful for:")
+    bullets(doc, [
+        "Tuning constants without a ROS environment",
+        "Demonstrating the detector on a laptop without UR3e or MoveIt",
+        "Debugging the calibration flow",
+    ])
+    para(doc, "All keyboard controls (q, c, b, s) work in both modes. The t (manual trigger) key is ROS-mode only.")
+
+    # ── 11. Usage cheat sheet ─────────────────────────────────────────
+    heading(doc, "11. Usage cheat sheet", level=1)
+    code_block(doc, """\
+# Build
+cd ~/git/BrickPickNPlace-RS2
+colcon build --packages-select brick_vision
+source install/setup.bash
+
+# Run (on_trigger mode, default)
+ros2 run brick_vision brick_detector
+
+# Continuous (debug)
+ros2 run brick_vision brick_detector --ros-args -p mode:=continuous
+
+# Headless
+ros2 run brick_vision brick_detector --ros-args -p show_preview:=false
+
+# Trigger a snapshot from another terminal
+ros2 topic pub --once /snapshot_trigger std_msgs/msg/Empty "{}"
+
+# Or press 't' in the preview window
+
+# Inspect topics
+ros2 topic list | grep brick_detector
+ros2 topic echo /brick_detector/detections
+ros2 topic hz   /brick_detector/detection_image
+""")
+
+    para(doc, "Preview-window keys (active in both modes):")
+    make_table(doc,
+        ["Key", "Action"],
+        [
+            ["q", "Quit"],
+            ["t", "Manual trigger (ROS mode only — same path as /snapshot_trigger)"],
+            ["c", "Re-calibrate workspace ROI (drag a rectangle)"],
+            ["b", "Re-calibrate build zone (click TL stud, then BR stud)"],
+            ["s", "Save the current annotated frame as a PNG"],
+        ])
+
+    # ── 12. Troubleshooting ───────────────────────────────────────────
+    heading(doc, "12. Troubleshooting (symptom → cause → fix)", level=1)
+
+    heading(doc, "12.1 Detection problems", level=2)
+    make_table(doc,
+        ["Symptom", "Likely cause", "Fix"],
+        [
+            ["No bricks detected, ever",
+             "Workspace ROI missing or wrong",
+             "Press c, redraw rectangle. Verify ~/.brick_vision/workspace_calibration.json exists."],
+            ["No bricks despite ROI set",
+             "Surface depth wrong → metric size check fails",
+             "Re-run c calibration; ensure table is visible inside rectangle"],
+            ["Detected up close, missed far away",
+             "Studs become sub-pixel",
+             "Move camera closer; lower MIN_CONTOUR_AREA"],
+            ["Detected far away, missed up close",
+             "HOUGH_MIN_DIST_M too large",
+             "Lower HOUGH_MIN_DIST_M (camera intrinsics, in metres)"],
+            ["One colour consistently missed",
+             "Colour range needs tuning under actual lighting",
+             "Sample HSV from a saved PNG; adjust COLOUR_RANGES"],
+            ["Random false positives",
+             "ROI too permissive",
+             "Press c, draw tighter ROI"],
+            ["Confidence stuck at ~0.6 — never higher",
+             "Stud verification consistently failing",
+             "Raise HOUGH_RADIUS_TOL; make camera angle more vertical"],
+        ])
+
+    heading(doc, "12.2 Build-zone problems", level=2)
+    make_table(doc,
+        ["Symptom", "Likely cause", "Fix"],
+        [
+            ["No slots ever published",
+             "Build zone not calibrated → analyze_buildzone returns None",
+             "Press b, click TL then BR stud"],
+            ["Grid drawn at wrong angle",
+             "2-click calibration assumes axis-aligned plate",
+             "Align plate with camera axes; or upgrade to 4-click perspective calibration"],
+            ["Brick on plate but its studs show as free",
+             "Brick yaw far off from oriented-box test expectation",
+             "Verify det.angle and size_px from logs"],
+            ["Adjacent bricks merged as one slot",
+             "PLACEMENT_GAP_STUDS = 0",
+             "Set back to 1"],
+        ])
+
+    heading(doc, "12.3 ROS-side problems", level=2)
+    make_table(doc,
+        ["Symptom", "Likely cause", "Fix"],
+        [
+            ["Trigger published, nothing happens",
+             "Mode is continuous (trigger ignored) or topic mismatch",
+             "Check ros2 param get /brick_detector mode and ros2 topic info /snapshot_trigger -v"],
+            ["Late interaction node sees no messages",
+             "mode=continuous (volatile QoS)",
+             "Switch to on_trigger (latched) for late-subscriber safety"],
+            ["detection_image won't display in rviz",
+             "QoS reliability mismatch",
+             "Set rviz Image display reliability to Best Effort"],
+            ["Snapshot fires but no detections",
+             "Workspace occluded (e.g. arm in frame) mid-snapshot",
+             "Trigger only from home pose; raise snapshot_frames"],
+        ])
+
+    heading(doc, "12.4 Camera problems", level=2)
+    make_table(doc,
+        ["Symptom", "Likely cause", "Fix"],
+        [
+            ["get_frames() returns None",
+             "RealSense not connected or claimed",
+             "pkill -f realsense; lsusb | grep Intel; test with realsense-viewer"],
+            ["Depth = 0 everywhere",
+             "Camera too close (< 0.10 m) or surface dark/transparent",
+             "Move camera to 0.3–0.7 m; ensure matte well-lit plate"],
+            ["Big depth jitter on the same stud",
+             "Frame-to-frame noise (D435i characteristic)",
+             "Already mitigated by 21×21 median in _sample_depth. Increase window if still noisy."],
+        ])
+
+    # ── 13. Viva preparation Q&A ──────────────────────────────────────
+    heading(doc, "13. Viva / design-review questions", level=1)
+    para(doc, "Anticipated questions with model answers — use these to rehearse.")
+
+    qa = [
+        ("Why did you pick a hybrid (colour + stud) approach instead of, say, a neural network?",
+         "Three reasons. First, the problem is well-constrained — fixed brick geometry, known stud pattern, top-down camera — so classical CV is sufficient and far cheaper to run on the robot PC than an ML model. Second, the detector is easy to debug and tune deterministically; each parameter has a clear physical meaning. Third, we don't need a labelled dataset, which would have been a significant time cost. The trade-off is reduced robustness to severe lighting changes — but we control the lighting in the workspace, so that's acceptable."),
+        ("How does the confidence score work?",
+         "It's the sum of a shape-based base score (up to 0.65) and a stud-verification bonus (up to 0.35). The base shrinks as the brick's aspect ratio or metric size drifts from expected (penalised linearly by aspect_err and size_err). The bonus is proportional to how many of the expected 8 studs were verified by HoughCircles, capped at 0.35 and only granted if at least 2 studs were found. The split means a confidence above 0.65 implies studs were verified — useful for downstream filtering."),
+        ("Why publish in the camera frame rather than the robot base frame?",
+         "Separation of concerns. The vision package shouldn't know how the camera is mounted relative to the robot; that's a robot-platform fact. Publishing in camera_color_optical_frame and letting tf2 do the transform downstream means the camera can be re-mounted (eye-to-hand vs eye-in-hand) by changing one static transform in the URDF or launch file, with zero changes to vision code."),
+        ("Why latched QoS only in on_trigger mode?",
+         "In on_trigger mode, publishes are rare and event-driven. A subscriber that starts after a snapshot — for example interaction_node coming up late — would otherwise miss it entirely until the next home arrival. Latching (TRANSIENT_LOCAL, depth 1) makes the most recent snapshot's results available immediately on connect. In continuous mode, the topic is published 15× per second, so a fresh message is always seconds away — latching adds no value and would create surprising behaviour (\"why am I getting stale data?\")."),
+        ("Why best-of-5 frames instead of just one?",
+         "The D435i has frame-to-frame depth noise and the colour image occasionally has motion artefacts. By capturing 5 frames in ~150 ms and scoring each by detected-brick count plus a small tiebreaker on summed confidence, we keep the cleanest result. The cost is one extra 100–150 ms of latency per trigger — acceptable for a pick cycle that takes several seconds."),
+        ("What happens if the arm is in frame during the snapshot?",
+         "The arm body would appear as a large non-LEGO-coloured contour. It won't pass the HSV mask (none of our colour ranges match metal grey) so it's not picked up as a brick. However, it can occlude bricks — that's why we only trigger from the home pose, which is calibrated to be outside the camera's brick-detection ROI."),
+        ("How is build-zone occupancy decided?",
+         "Each detected brick gives us an oriented bounding box (centre, half-extents, yaw). For each of the 168 studs on the 12×14 plate we rotate the stud position into the brick's local frame and check whether it falls inside the rectangle. Any stud inside any brick's footprint is occupied; the rest are free."),
+        ("What's the 1-stud gap rule and why?",
+         "When searching for placement slots, we require the surrounding 1-stud ring of each candidate 4×2 area to also be free (or off-grid). This ensures the gripper has clearance to approach and release without colliding with adjacent bricks. Set PLACEMENT_GAP_STUDS to 0 to disable; 1 matches our gripper width."),
+        ("What's the failure mode if calibration drifts?",
+         "Two distinct failures. (a) Workspace ROI drift — bricks just outside the ROI are missed entirely; bricks just inside might still detect. Fix: press c. (b) Build-zone drift — the interpolated stud grid is offset from the real plate, so occupancy and free-slot results are wrong. Fix: press b. Both calibrations are saved to disk and survive restarts; if the camera physically moves they need to be redone."),
+        ("Why two backup files in brick_vision/ ?",
+         "Defensive snapshots from major refactors. brick_detector_dimension_based.py is the original contour-only detector before stud verification was added. brick_detector_no_buildzone.py is the version just before build-zone analysis was added. Both are kept as escape hatches — if a future change breaks something subtle, we can diff against them."),
+    ]
+    for q, a in qa:
+        para(doc, f"Q: {q}", bold=True)
+        para(doc, f"A: {a}")
+        doc.add_paragraph()
+
+    # ── 14. Glossary ──────────────────────────────────────────────────
+    heading(doc, "14. Glossary", level=1)
+    make_table(doc,
+        ["Term", "Definition"],
+        [
+            ["Stud", "The cylindrical peg on top of a LEGO brick (15 mm diameter)."],
+            ["Pitch", "Centre-to-centre distance between studs (25 mm for standard LEGO)."],
+            ["ROI", "Region of Interest — the calibrated workspace rectangle."],
+            ["Build zone", "The fixed area of the table where bricks are placed (12×14 stud grid)."],
+            ["Pickup zone", "The area where loose bricks are presented to the camera for picking."],
+            ["Slot", "A 4×2 stud area on the build plate that's free and respects the gap rule."],
+            ["Latched topic", "ROS 2 topic with TRANSIENT_LOCAL durability — late subscribers receive the last message."],
+            ["camera_color_optical_frame", "Standard ROS frame ID for the colour optical centre of a camera. X right, Y down, Z forward."],
+            ["base_link", "Standard ROS frame ID for the base of the robot. UR3e specific."],
+            ["Hand-eye calibration", "Process of measuring the static transform between camera and robot. Required for the interaction node's tf2 lookup to work."],
+            ["Detection3DArray", "vision_msgs message type bundling a list of 3D detections, each with pose, size, and hypothesis (class + score)."],
+        ])
+
+    # Save
+    DOC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(DOC_PATH)
+    print(f"Wrote {DOC_PATH}")
+
+
+if __name__ == "__main__":
+    build_doc()

@@ -31,6 +31,15 @@ src/log/
 *.zip
 .codex
 
+# Generated docs (regenerate locally with `python3 tools/generate_docs.py`)
+docs/
+
+# Auto-generated IK cache from MoveIt
+*.ikcache
+
+# Detector preview snapshots (saved by pressing 's' in the OpenCV window)
+snapshot_*.png
+
 # IDE
 .vscode/
 .idea/
