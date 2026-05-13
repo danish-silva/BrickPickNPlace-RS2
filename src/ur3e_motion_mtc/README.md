@@ -191,4 +191,7 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 
 **Known Limitations:**
 
-- 
+- If planning fails, the node logs an error and exits. It does not retry automatically with different parameters.
+- The workspace does not model the evironment of the actually UR3e. There is no placement board or other bricks, so the robot doesn't avoid collision with the environment yet.
+- Currently, the Cartesian movements only work if the minimum is set to 0m, so they dont retreat or approach the bricks.
+

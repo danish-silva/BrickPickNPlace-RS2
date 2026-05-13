@@ -218,7 +218,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.03, 0.20);
+      stage->setMinMaxDistance(0.0, 0.20);
 
       // Approach from above — move downward in world frame
       geometry_msgs::msg::Vector3Stamped vec;
@@ -288,7 +288,7 @@ mtc::Task MTCTaskNode::createTask()
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.03, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
+      stage->setMinMaxDistance(0.0, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "lift_object");
 
@@ -382,7 +382,7 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.03, 0.20);
+      stage->setMinMaxDistance(0.0, 0.20);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "retreat");
 
