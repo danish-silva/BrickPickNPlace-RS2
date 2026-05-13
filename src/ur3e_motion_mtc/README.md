@@ -76,7 +76,7 @@ On receiving valid pose data the node executes this sequence on the UR3e:
 ### Building
 ```bash
 cd ~/ws_moveit2
-colcon build --packages-select ur3e_motion_mtc
+colcon build --symlink-install --packages-select ur3e_motion_mtc
 source install/setup.bash
 ```
 
@@ -85,7 +85,7 @@ source install/setup.bash
 **Terminal 1 — UR driver (connect to physical robot):**
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/ws_moveit2/install/setup.bash
+source install/setup.bash
 ros2 launch ur_onrobot_control start_robot.launch.py \
   ur_type:=ur3e \
   onrobot_type:=rg2 \
@@ -96,28 +96,21 @@ ros2 launch ur_onrobot_control start_robot.launch.py \
 **Terminal 1 — UR driver (connect to Fake Hardware):**
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/ws_moveit2/install/setup.bash
-ros2 launch ur_onrobot_control start_robot.launch.py \
-  ur_type:=ur3e \ 
-  onrobot_type:=rg2 \
-  use_fake_hardware:=true \
-  launch_rviz:=false
+source install/setup.bash
+ros2 launch ur_onrobot_control start_robot.launch.py ur_type:=ur3e onrobot_type:=rg2 use_fake_hardware:=true launch_rviz:=false
 ```
 
 **Terminal 2 — MoveIt + RViz:**
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/ws_moveit2/install/setup.bash
-ros2 launch ur_onrobot_moveit_config ur_onrobot_moveit.launch.py \
-  ur_type:=ur3e \
-  onrobot_type:=rg2 \
-  launch_rviz:=true
+source install/setup.bash
+ros2 launch ur_onrobot_moveit_config ur_onrobot_moveit.launch.py ur_type:=ur3e onrobot_type:=rg2 launch_rviz:=true
 ```
 
 **Terminal 3 — Launch Motion Planning and Control Node:**
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/ws_moveit2/install/setup.bash
+source install/setup.bash
 ros2 launch ur3e_motion_mtc ur3e_motion_mtc.launch.py
 ```
 

@@ -189,7 +189,7 @@ mtc::Task MTCTaskNode::createTask()
   auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
   cartesian_planner->setMaxVelocityScalingFactor(0.5);
   cartesian_planner->setMaxAccelerationScalingFactor(0.5);
-  cartesian_planner->setStepSize(.01);
+  cartesian_planner->setStepSize(.005);
 
   auto stage_open_hand =
       std::make_unique<mtc::stages::MoveTo>("open hand", interpolation_planner);
@@ -218,12 +218,12 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.0, 0.20);
+      stage->setMinMaxDistance(0.03, 0.20);
 
       // Approach from above — move downward in world frame
       geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = "world";   // changed from hand_frame to world
-      vec.vector.z = -1.0;             // negative Z = downward
+      vec.header.frame_id = hand_frame;   // changed from hand_frame to world
+      vec.vector.z = 1.0;             // negative Z = downward
       stage->setDirection(vec);
       grasp->insert(std::move(stage));
     }
@@ -251,7 +251,7 @@ mtc::Task MTCTaskNode::createTask()
       grasp_frame_transform.translation() = Eigen::Vector3d(0.0, 0.0, 0.0);
 
       auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
-      wrapper->setMaxIKSolutions(16);
+      wrapper->setMaxIKSolutions(64);
       wrapper->setMinSolutionDistance(1.0);
       wrapper->setIKFrame(grasp_frame_transform, hand_frame);
       wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
@@ -288,7 +288,7 @@ mtc::Task MTCTaskNode::createTask()
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.0, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
+      stage->setMinMaxDistance(0.03, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "lift_object");
 
@@ -382,7 +382,7 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.0, 0.20);
+      stage->setMinMaxDistance(0.03, 0.20);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "retreat");
 
