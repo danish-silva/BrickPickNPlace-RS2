@@ -13,9 +13,10 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        # .ui file lives inside the Python package so __file__-relative path works
-        # with --symlink-install; no extra data_files entry needed for development
     ],
+    package_data={
+        package_name: ['ui/*.ui'],
+    },
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Hari Mahadevan',
