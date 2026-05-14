@@ -5,6 +5,22 @@
 The Motion Planning and Control is responsible for all the physical movements of the UR3e robotic arm. This subsystem receives a brick's position within the pickup zone, and the target placement position on the LEGO board. Utilising MoveIt Task Constructor, the UR3e plans and executes the full pick-and-place sequence while avoiding collisions with itself and the surrounding environment.
 
 ---
+ 
+## System Requirements
+ 
+| Component | Version |
+|---|---|
+| Operating System | Ubuntu 22.04 (via WSL2 on Windows 11) |
+| ROS2 | Humble Hawksbill |
+| MoveIt2 | 2.5.9 |
+| MoveIt Task Constructor | 0.1.3 |
+| RViz2 | 11.2.26 |
+| WSL Version | WSL2 version 2.5.10.0 |
+| Robot | Universal Robots UR3e |
+| Gripper | OnRobot RG2 |
+
+
+---
 
 ## Key Nodes, Topics, and Files
 
@@ -48,6 +64,24 @@ A single `std_msgs/msg/Float64MultiArray` message containing  12 float64 values 
 ```
 [brick_x, brick_y, brick_z, brick_roll, brick_pitch, brick_yaw, target_x, target_y, target_z, target_roll, target_pitch, target_yaw]
 ```
+
+| Index | Value | Unit |
+|---|---|---|
+| 0 | brick x | metres |
+| 1 | brick y | metres |
+| 2 | brick z | metres |
+| 3 | brick roll | radians |
+| 4 | brick pitch | radians |
+| 5 | brick yaw | radians |
+| 6 | target x | metres |
+| 7 | target y | metres |
+| 8 | target z | metres |
+| 9 | target roll | radians |
+| 10 | target pitch | radians |
+| 11 | target yaw | radians |
+
+All positions must be in the `world` frame, which within the current setup is equivalent to the `base_link`. The makes the coordinates relative to the base of the UR3e. 
+
 The node waits for the the `ordered_pose_array` to be received before planning and executing movements on the UR3e.
 
 ### Output — Robot Motion

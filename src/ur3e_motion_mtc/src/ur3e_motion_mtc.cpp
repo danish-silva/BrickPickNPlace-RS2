@@ -481,23 +481,25 @@ int main(int argc, char** argv)
     executor.remove_node(mtc_task_node->getNodeBaseInterface());
   });
 
-  // Wait for pose data to arrive
+  // Wait for pose data to arrive and process tasks in a loop
   RCLCPP_INFO(LOGGER, "Waiting for poses on 'ordered_pose_array'...");
-  while (rclcpp::ok() && !poses_received) {
-    rclcpp::sleep_for(std::chrono::milliseconds(100));
-  }
+  while (rclcpp::ok()) {
+    poses_received = false;  // Reset for each iteration
+    while (rclcpp::ok() && !poses_received) {
+      rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
 
-  if (!poses_received) {
-    RCLCPP_ERROR(LOGGER, "Timeout waiting for pose data");
-    rclcpp::shutdown();
-    spin_thread->join();
-    return 1;
-  }
+    if (!poses_received) {
+      RCLCPP_ERROR(LOGGER, "Timeout waiting for pose data");
+      break;
+    }
 
-  RCLCPP_INFO(LOGGER, "Received pose data, setting up scene and executing task");
-  mtc_task_node->setPoseData(brick_pose, target_pose);
-  mtc_task_node->setupPlanningScene();
-  mtc_task_node->doTask();
+    RCLCPP_INFO(LOGGER, "Received pose data, setting up scene and executing task");
+    mtc_task_node->setPoseData(brick_pose, target_pose);
+    mtc_task_node->setupPlanningScene();
+    mtc_task_node->doTask();
+    RCLCPP_INFO(LOGGER, "Task completed, waiting for next poses...");
+  }
 
   spin_thread->join();
   rclcpp::shutdown();
