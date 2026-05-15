@@ -8,6 +8,7 @@
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <mutex>
 #include <atomic>
+#include <vision_msgs/msg/detection3_d_array.hpp>
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #else
@@ -43,6 +44,11 @@ public:
     brick_pose_ = brick_pose;
     target_pose_ = target_pose;
   }
+
+  void updateBrickInScene(double x, double y, double z,
+                          double qx, double qy, double qz, double qw,
+                          const std::string& frame_id,
+                          const std::string& object_id = "object");
 
   rclcpp::Node::SharedPtr node_;  // Public so main() can create subscriptions
 
@@ -112,7 +118,7 @@ void MTCTaskNode::setupPlanningScene()
   ground.operation = ground.ADD;
 
   moveit::planning_interface::PlanningSceneInterface psi;
-  psi.applyCollisionObject(object);
+  //psi.applyCollisionObject(object);
   psi.applyCollisionObject(ground);
 }
 
@@ -408,103 +414,338 @@ mtc::Task MTCTaskNode::createTask()
   return task;
 }
 
+void MTCTaskNode::updateBrickInScene(double x, double y, double z,
+                                      double qx, double qy, double qz, double qw,
+                                      const std::string& frame_id,
+                                      const std::string& object_id)
+{
+    moveit_msgs::msg::CollisionObject object;
+    object.id = object_id;
+    object.header.frame_id = frame_id;
+    object.primitives.resize(1);
+    object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
+    object.primitives[0].dimensions = { 0.1, 0.05, 0.04 };
+
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = y;
+    pose.position.z = z + 0.02;  // adjust for box height so it sits on the surface
+    pose.orientation.x = qx;
+    pose.orientation.y = qy;
+    pose.orientation.z = qz;
+    pose.orientation.w = qw;
+    object.pose = pose;
+    object.operation = object.ADD;
+
+    moveit::planning_interface::PlanningSceneInterface psi;
+    psi.applyCollisionObject(object);
+    RCLCPP_INFO(LOGGER, "Added '%s' to scene in frame '%s': x:%.3f y:%.3f z:%.3f",
+        object_id.c_str(), frame_id.c_str(), x, y, z);
+}
+
 int main(int argc, char** argv)
 {
-  rclcpp::init(argc, argv);
+    rclcpp::init(argc, argv);
+    rclcpp::NodeOptions options;
+    options.automatically_declare_parameters_from_overrides(true);
 
-  rclcpp::NodeOptions options;
-  options.automatically_declare_parameters_from_overrides(true);
+    auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
 
-  auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
-  
-  // -----------------------------------------------------------------------
-  // Subscribe to ordered_pose_array topic
-  //
-  // Message type: std_msgs/Float64MultiArray
-  // Format: flat array of 6 values per pose [x, y, z, roll, pitch, yaw]
-  //
-  // Expected: exactly 2 poses (brick position and target position)
-  // data: [brick_x, brick_y, brick_z, brick_roll, brick_pitch, brick_yaw,
-  //        target_x, target_y, target_z, target_roll, target_pitch, target_yaw]
-  // -----------------------------------------------------------------------
-  std::atomic<bool> poses_received{false};
-  PoseData brick_pose{};
-  PoseData target_pose{};
-  
-  auto pose_subscription = mtc_task_node->node_->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "ordered_pose_array",
-      10,
-      [&brick_pose, &target_pose, &poses_received](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
-          const size_t POSE_SIZE = 6;
-          const size_t EXPECTED_POSES = 2;  // brick and target
+    std::atomic<bool> poses_received{false};
+    std::atomic<bool> brick_detected{false};
+    PoseData brick_pose{};
+    PoseData target_pose{};
 
-          if (msg->data.size() != EXPECTED_POSES * POSE_SIZE) {
-              RCLCPP_ERROR(LOGGER,
-                  "Expected array size %zu but received %zu — ignoring",
-                  EXPECTED_POSES * POSE_SIZE, msg->data.size());
-              return;
-          }
+    // -----------------------------------------------------------------------
+    // Subscriber 1 — brick detections from camera
+    // Adds brick to planning scene immediately in camera frame
+    // -----------------------------------------------------------------------
+    auto detection_subscription = mtc_task_node->node_->create_subscription<vision_msgs::msg::Detection3DArray>(
+        "/brick_detector/detections",
+        10,
+        [&mtc_task_node, &brick_detected](const vision_msgs::msg::Detection3DArray::SharedPtr msg) {
+            if (msg->detections.empty()) return;
 
-          // Parse brick position
-          brick_pose.x = msg->data[0];
-          brick_pose.y = msg->data[1];
-          brick_pose.z = msg->data[2];
-          brick_pose.roll = msg->data[3];
-          brick_pose.pitch = msg->data[4];
-          brick_pose.yaw = msg->data[5];
+            moveit::planning_interface::PlanningSceneInterface psi;
 
-          // Parse target position
-          target_pose.x = msg->data[6];
-          target_pose.y = msg->data[7];
-          target_pose.z = msg->data[8];
-          target_pose.roll = msg->data[9];
-          target_pose.pitch = msg->data[10];
-          target_pose.yaw = msg->data[11];
+            // Remove all previous brick objects before adding new ones
+            // This handles bricks that have moved or been picked up
+            std::vector<std::string> to_remove;
+            auto existing = psi.getKnownObjectNames();
+            for (auto& name : existing) {
+                if (name.find("brick_") != std::string::npos) {
+                    to_remove.push_back(name);
+                }
+            }
+            if (!to_remove.empty()) {
+                psi.removeCollisionObjects(to_remove);
+            }
 
-          RCLCPP_INFO(LOGGER, "Received poses:");
-          RCLCPP_INFO(LOGGER, "  Brick: x:%.3f y:%.3f z:%.3f r:%.3f p:%.3f y:%.3f",
-              brick_pose.x, brick_pose.y, brick_pose.z,
-              brick_pose.roll, brick_pose.pitch, brick_pose.yaw);
-          RCLCPP_INFO(LOGGER, "  Target: x:%.3f y:%.3f z:%.3f r:%.3f p:%.3f y:%.3f",
-              target_pose.x, target_pose.y, target_pose.z,
-              target_pose.roll, target_pose.pitch, target_pose.yaw);
+            int added = 0;
+            for (size_t i = 0; i < msg->detections.size(); ++i) {
+                auto& det = msg->detections[i];
+                if (det.results.empty()) continue;
 
-          poses_received = true;
-      }
-  );
+                double score = det.results[0].hypothesis.score;
+                if (score < 0.3) continue;  // skip low confidence
 
-  rclcpp::executors::MultiThreadedExecutor executor;
+                auto& pos = det.bbox.center.position;
+                auto& ori = det.bbox.center.orientation;
 
-  auto spin_thread = std::make_unique<std::thread>([&executor, &mtc_task_node]() {
-    executor.add_node(mtc_task_node->getNodeBaseInterface());
-    executor.spin();
-    executor.remove_node(mtc_task_node->getNodeBaseInterface());
-  });
+                // Each brick gets a unique ID: brick_0, brick_1, etc.
+                std::string brick_id = "brick_" + std::to_string(i);
 
-  // Wait for pose data to arrive and process tasks in a loop
-  RCLCPP_INFO(LOGGER, "Waiting for poses on 'ordered_pose_array'...");
-  while (rclcpp::ok()) {
-    poses_received = false;  // Reset for each iteration
-    while (rclcpp::ok() && !poses_received) {
-      rclcpp::sleep_for(std::chrono::milliseconds(100));
-    }
+                mtc_task_node->updateBrickInScene(
+                    pos.x, pos.y, pos.z,
+                    ori.x, ori.y, ori.z, ori.w,
+                    det.header.frame_id,
+                    brick_id  // pass unique ID
+                );
 
-    if (!poses_received) {
-      RCLCPP_ERROR(LOGGER, "Timeout waiting for pose data");
-      break;
-    }
+                RCLCPP_INFO(LOGGER, "Added %s: colour=%s conf=%.2f",
+                    brick_id.c_str(),
+                    det.results[0].hypothesis.class_id.c_str(),
+                    score);
 
-    RCLCPP_INFO(LOGGER, "Received pose data, setting up scene and executing task");
-    mtc_task_node->setPoseData(brick_pose, target_pose);
+                added++;
+            }
+
+            RCLCPP_INFO(LOGGER, "Scene updated with %d bricks", added);
+            if (added > 0) brick_detected = true;
+        }
+    );
+
+    // -----------------------------------------------------------------------
+    // Subscriber 2 — ordered pose array for execution
+    // -----------------------------------------------------------------------
+    auto pose_subscription = mtc_task_node->node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+        "ordered_pose_array",
+        10,
+        [&brick_pose, &target_pose, &poses_received](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+            const size_t POSE_SIZE = 6;
+            const size_t EXPECTED_POSES = 2;
+
+            if (msg->data.size() != EXPECTED_POSES * POSE_SIZE) {
+                RCLCPP_ERROR(LOGGER, "Expected 12 values, got %zu — ignoring", msg->data.size());
+                return;
+            }
+
+            brick_pose.x     = msg->data[0];  brick_pose.y     = msg->data[1];
+            brick_pose.z     = msg->data[2];  brick_pose.roll  = msg->data[3];
+            brick_pose.pitch = msg->data[4];  brick_pose.yaw   = msg->data[5];
+            target_pose.x    = msg->data[6];  target_pose.y    = msg->data[7];
+            target_pose.z    = msg->data[8];  target_pose.roll = msg->data[9];
+            target_pose.pitch = msg->data[10]; target_pose.yaw = msg->data[11];
+
+            RCLCPP_INFO(LOGGER, "Received brick: x:%.3f y:%.3f z:%.3f",
+                brick_pose.x, brick_pose.y, brick_pose.z);
+            RCLCPP_INFO(LOGGER, "Received target: x:%.3f y:%.3f z:%.3f",
+                target_pose.x, target_pose.y, target_pose.z);
+
+            poses_received = true;
+        }
+    );
+
+    rclcpp::executors::MultiThreadedExecutor executor;
+    auto spin_thread = std::make_unique<std::thread>([&executor, &mtc_task_node]() {
+        executor.add_node(mtc_task_node->getNodeBaseInterface());
+        executor.spin();
+        executor.remove_node(mtc_task_node->getNodeBaseInterface());
+    });
+
+    // Step 1 — setup ground plane immediately
+    rclcpp::sleep_for(std::chrono::seconds(2));  // wait for move_group
     mtc_task_node->setupPlanningScene();
-    mtc_task_node->doTask();
-    RCLCPP_INFO(LOGGER, "Task completed, waiting for next poses...");
-  }
+    RCLCPP_INFO(LOGGER, "Scene ready. Waiting for brick detection...");
 
-  spin_thread->join();
-  rclcpp::shutdown();
-  return 0;
+    // Step 2 — wait for brick detection and add to scene
+    while (rclcpp::ok() && !brick_detected) {
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
+    RCLCPP_INFO(LOGGER, "Brick detected and added to scene. Waiting for ordered_pose_array...");
+
+    // Step 3 — main execution loop
+    while (rclcpp::ok()) {
+        poses_received = false;
+        brick_detected = false;
+
+        while (rclcpp::ok() && !poses_received) {
+            rclcpp::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (!poses_received) break;
+
+        RCLCPP_INFO(LOGGER, "Executing task...");
+        mtc_task_node->setPoseData(brick_pose, target_pose);
+        mtc_task_node->doTask();
+
+        RCLCPP_INFO(LOGGER, "Task complete. Waiting for next detection...");
+
+        // Wait for next brick detection before accepting next pose array
+        while (rclcpp::ok() && !brick_detected) {
+            rclcpp::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    spin_thread->join();
+    rclcpp::shutdown();
+    return 0;
 }
+
+// int main(int argc, char** argv)
+// {
+//   rclcpp::init(argc, argv);
+
+//   rclcpp::NodeOptions options;
+//   options.automatically_declare_parameters_from_overrides(true);
+
+//   auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
+  
+//   // -----------------------------------------------------------------------
+//   // Subscribe to ordered_pose_array topic
+//   //
+//   // Message type: std_msgs/Float64MultiArray
+//   // Format: flat array of 6 values per pose [x, y, z, roll, pitch, yaw]
+//   //
+//   // Expected: exactly 2 poses (brick position and target position)
+//   // data: [brick_x, brick_y, brick_z, brick_roll, brick_pitch, brick_yaw,
+//   //        target_x, target_y, target_z, target_roll, target_pitch, target_yaw]
+//   // -----------------------------------------------------------------------
+//   std::atomic<bool> poses_received{false};
+//   PoseData brick_pose{};
+//   PoseData target_pose{};
+  
+//   auto pose_subscription = mtc_task_node->node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+//       "ordered_pose_array",
+//       10,
+//       [&brick_pose, &target_pose, &poses_received](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+//           const size_t POSE_SIZE = 6;
+//           const size_t EXPECTED_POSES = 2;  // brick and target
+
+//           if (msg->data.size() != EXPECTED_POSES * POSE_SIZE) {
+//               RCLCPP_ERROR(LOGGER,
+//                   "Expected array size %zu but received %zu — ignoring",
+//                   EXPECTED_POSES * POSE_SIZE, msg->data.size());
+//               return;
+//           }
+
+//           // Parse brick position
+//           brick_pose.x = msg->data[0];
+//           brick_pose.y = msg->data[1];
+//           brick_pose.z = msg->data[2];
+//           brick_pose.roll = msg->data[3];
+//           brick_pose.pitch = msg->data[4];
+//           brick_pose.yaw = msg->data[5];
+
+//           // Parse target position
+//           target_pose.x = msg->data[6];
+//           target_pose.y = msg->data[7];
+//           target_pose.z = msg->data[8];
+//           target_pose.roll = msg->data[9];
+//           target_pose.pitch = msg->data[10];
+//           target_pose.yaw = msg->data[11];
+
+//           RCLCPP_INFO(LOGGER, "Received poses:");
+//           RCLCPP_INFO(LOGGER, "  Brick: x:%.3f y:%.3f z:%.3f r:%.3f p:%.3f y:%.3f",
+//               brick_pose.x, brick_pose.y, brick_pose.z,
+//               brick_pose.roll, brick_pose.pitch, brick_pose.yaw);
+//           RCLCPP_INFO(LOGGER, "  Target: x:%.3f y:%.3f z:%.3f r:%.3f p:%.3f y:%.3f",
+//               target_pose.x, target_pose.y, target_pose.z,
+//               target_pose.roll, target_pose.pitch, target_pose.yaw);
+
+//           poses_received = true;
+//       }
+//   );
+
+//   auto detection_subscription = mtc_task_node->node_->create_subscription<vision_msgs::msg::Detection3DArray>(
+//       "/brick_detector/detections",
+//       10,
+//       [&mtc_task_node, &brick_detected](const vision_msgs::msg::Detection3DArray::SharedPtr msg) {
+//           if (msg->detections.empty()) return;
+
+//           moveit::planning_interface::PlanningSceneInterface psi;
+
+//           // Remove all previous brick objects before adding new ones
+//           // This handles bricks that have moved or been picked up
+//           std::vector<std::string> to_remove;
+//           auto existing = psi.getKnownObjectNames();
+//           for (auto& name : existing) {
+//               if (name.find("brick_") != std::string::npos) {
+//                   to_remove.push_back(name);
+//               }
+//           }
+//           if (!to_remove.empty()) {
+//               psi.removeCollisionObjects(to_remove);
+//           }
+
+//           int added = 0;
+//           for (size_t i = 0; i < msg->detections.size(); ++i) {
+//               auto& det = msg->detections[i];
+//               if (det.results.empty()) continue;
+
+//               double score = det.results[0].hypothesis.score;
+//               if (score < 0.3) continue;  // skip low confidence
+
+//               auto& pos = det.bbox.center.position;
+//               auto& ori = det.bbox.center.orientation;
+
+//               // Each brick gets a unique ID: brick_0, brick_1, etc.
+//               std::string brick_id = "brick_" + std::to_string(i);
+
+//               mtc_task_node->updateBrickInScene(
+//                   pos.x, pos.y, pos.z,
+//                   ori.x, ori.y, ori.z, ori.w,
+//                   det.header.frame_id,
+//                   brick_id  // pass unique ID
+//               );
+
+//               RCLCPP_INFO(LOGGER, "Added %s: colour=%s conf=%.2f",
+//                   brick_id.c_str(),
+//                   det.results[0].hypothesis.class_id.c_str(),
+//                   score);
+
+//               added++;
+//           }
+
+//           RCLCPP_INFO(LOGGER, "Scene updated with %d bricks", added);
+//           if (added > 0) brick_detected = true;
+//       }
+//   );
+
+//   rclcpp::executors::MultiThreadedExecutor executor;
+
+//   auto spin_thread = std::make_unique<std::thread>([&executor, &mtc_task_node]() {
+//     executor.add_node(mtc_task_node->getNodeBaseInterface());
+//     executor.spin();
+//     executor.remove_node(mtc_task_node->getNodeBaseInterface());
+//   });
+
+//   // Wait for pose data to arrive and process tasks in a loop
+//   RCLCPP_INFO(LOGGER, "Waiting for poses on 'ordered_pose_array'...");
+//   while (rclcpp::ok()) {
+//     poses_received = false;  // Reset for each iteration
+//     while (rclcpp::ok() && !poses_received) {
+//       rclcpp::sleep_for(std::chrono::milliseconds(100));
+//     }
+
+//     if (!poses_received) {
+//       RCLCPP_ERROR(LOGGER, "Timeout waiting for pose data");
+//       break;
+//     }
+
+//     RCLCPP_INFO(LOGGER, "Received pose data, setting up scene and executing task");
+//     mtc_task_node->setPoseData(brick_pose, target_pose);
+//     mtc_task_node->setupPlanningScene();
+//     mtc_task_node->doTask();
+//     RCLCPP_INFO(LOGGER, "Task completed, waiting for next poses...");
+//   }
+
+//   spin_thread->join();
+//   rclcpp::shutdown();
+//   return 0;
+// }
+
+
 
 // //Including necessary headers for ROS2, MoveIt, and TF2
 // #include <rclcpp/rclcpp.hpp>

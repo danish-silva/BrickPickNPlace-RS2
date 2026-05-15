@@ -8,6 +8,7 @@ from launch.substitutions import (
 )
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 
 from ur_onrobot_moveit_config.launch_common import load_yaml
 
@@ -83,7 +84,9 @@ def launch_setup(context, *args, **kwargs):
             " ",
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
     robot_description_semantic_content = Command(
         [
@@ -101,7 +104,7 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
     robot_description_semantic = {
-        "robot_description_semantic": robot_description_semantic_content
+        "robot_description_semantic": ParameterValue(robot_description_semantic_content, value_type=str)
     }
 
     robot_description_kinematics = {

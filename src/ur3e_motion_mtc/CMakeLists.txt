@@ -9,12 +9,13 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(vision_msgs REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
 add_executable(ur3e_motion_mtc src/ur3e_motion_mtc.cpp)
-ament_target_dependencies(ur3e_motion_mtc moveit_task_constructor_core rclcpp)
+ament_target_dependencies(ur3e_motion_mtc moveit_task_constructor_core rclcpp std_msgs vision_msgs)
 target_include_directories(ur3e_motion_mtc PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include>)

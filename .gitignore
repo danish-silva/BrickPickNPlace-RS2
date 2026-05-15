@@ -44,3 +44,4 @@ snapshot_*.png
 .vscode/
 .idea/
 *.swp
+brick_run/
