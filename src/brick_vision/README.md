@@ -64,8 +64,10 @@ All published under the node namespace `/brick_detector/`. In `on_trigger` mode 
 | Topic | Type | Purpose |
 |---|---|---|
 | `~/detection_image` | `sensor_msgs/Image` | Annotated camera frame: brick boxes + colour labels, build-zone perimeter, free studs (green dots), occupied studs (red X), available 4×2 slots (cyan rectangles), status line. Not latched. |
-| `~/detections` | `vision_msgs/Detection3DArray` | **Main consumer topic.** One entry per brick, binding `pose + size + colour + confidence` together. Pose orientation encodes yaw as a quaternion (roll/pitch = 0). Colour string is in `results[0].hypothesis.class_id`. |
-| `~/brick_pose` | `geometry_msgs/PoseStamped` | Convenience — first brick only. Use `~/detections` for real consumption. |
+| `~/detections` | `vision_msgs/Detection3DArray` | **All** detected bricks (pickup + placed). Useful for rviz / debugging. One entry per brick, binding `pose + size + colour + confidence`. Pose orientation encodes yaw as a quaternion (roll/pitch = 0). Colour string is in `results[0].hypothesis.class_id`. |
+| `~/pickup_detections` | `vision_msgs/Detection3DArray` | **Main consumer topic for the interaction node.** Only bricks whose pixel centre falls *outside* the calibrated build-zone rectangle — i.e. bricks waiting to be picked. Same message structure as `~/detections`. If the build zone isn't calibrated, this is identical to `~/detections`. |
+| `~/placed_detections` | `vision_msgs/Detection3DArray` | Bricks already on the build plate (pixel centre inside the build-zone rectangle, ½-stud margin). Diagnostic only — the interaction node should ignore these. |
+| `~/brick_pose` | `geometry_msgs/PoseStamped` | Convenience — first **pickup-side** brick only. Use `~/pickup_detections` for real consumption. |
 | `~/free_studs` | `geometry_msgs/PoseArray` | Centre of every free stud on the 12×14 grid. Diagnostic. |
 | `~/available_slots` | `geometry_msgs/PoseArray` | **Placement-target topic.** Midpoint of each legal 4×2 area (free + 1-stud gap respected). Orientation encodes the slot's yaw (long axis along X vs Y). |
 
