@@ -12,6 +12,12 @@
 <depend>moveit_task_constructor_core</depend>
 <depend>rclcpp</depend>
 <depend>vision_msgs</depend>
+<depend>std_msgs</depend>
+<depend>geometry_msgs</depend>
+<depend>moveit_msgs</depend>
+<depend>shape_msgs</depend>
+<depend>tf2_geometry_msgs</depend>
+<depend>tf2_eigen</depend>
 
 <test_depend>ament_lint_auto</test_depend>
 <test_depend>ament_lint_common</test_depend>
