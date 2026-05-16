@@ -56,8 +56,7 @@ BrickPickNPlace-RS2/
 │   ├── brick_vision/          # Perception & mapping (RealSense + OpenCV)
 │   ├── brick_gui/             # User interface
 │   ├── brick_interaction/     # Task sequencing & execution logic
-│   ├── ur3e_motion/           # Motion planning (Python / MoveIt2)
-│   └── ur3e_motion_cpp/       # Motion planning (C++ / MoveIt2)
+│   └── ur3e_motion_mtc/       # Motion planning (MoveIt2 Task Constructor)
 ├── .gitignore
 └── README.md
 ```
