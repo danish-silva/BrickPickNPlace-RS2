@@ -143,8 +143,6 @@ rosdep update
 ### Install Workspace Dependencies
 
 ```bash
-cd ~/ws_moveit2
-
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
