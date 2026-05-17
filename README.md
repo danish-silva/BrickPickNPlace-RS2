@@ -247,16 +247,26 @@ ros2 run brick_gui brick_gui_node
 
 ---
 
-## Expected Outcome
+## Demo and System Images
 
-> Add photos/screenshots here — robot in action, RViz view, brick detection output, GUI.
+### Demonstration Video
 
-[![Motion Planning & Control Expected Outcome](https://img.youtube.com/vi/YMXdymKKalc/0.jpg)](https://youtu.be/YMXdymKKalc)
+[![Watch the LeBrick n' Place demonstration](https://img.youtube.com/vi/YMXdymKKalc/maxresdefault.jpg)](https://youtu.be/YMXdymKKalc)
+
+### System Integration
+
+![Entire fused system in Simulation](assets/integration_image.png)
+
+### Robot Setup
+
+![UR3e robot with OnRobot RG2 gripper](assets/ur3e_image.jpg)
+
+### Camera Vision
+
+![Perception Data](assets/snapshot_1778121623.png)
+# brick_vision — Perception & Mapping
 
 ---
-
-
-# brick_vision — Perception & Mapping
 
 ROS 2 package for detecting LEGO bricks and analysing a build plate using an **Intel RealSense D435i** depth camera and **OpenCV**. Identifies bricks by their stud pattern, classifies colour, estimates 3D pose, and finds available placement slots on a 12×14-stud build zone.
 
