@@ -251,11 +251,10 @@ ros2 run brick_gui brick_gui_node
 
 > Add photos/screenshots here — robot in action, RViz view, brick detection output, GUI.
 
----
-
-## Troubleshooting & FAQs
+[![Motion Planning & Control Expected Outcome](https://img.youtube.com/vi/YMXdymKKalc/0.jpg)](https://youtu.be/YMXdymKKalc)
 
 ---
+
 
 # brick_vision — Perception & Mapping
 
