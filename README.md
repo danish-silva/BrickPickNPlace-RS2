@@ -264,9 +264,11 @@ ros2 run brick_gui brick_gui_node
 ### Camera Vision
 
 ![Perception Data](assets/snapshot_1778121623.png)
-# brick_vision — Perception & Mapping
 
 ---
+
+# brick_vision — Perception & Mapping
+
 
 ROS 2 package for detecting LEGO bricks and analysing a build plate using an **Intel RealSense D435i** depth camera and **OpenCV**. Identifies bricks by their stud pattern, classifies colour, estimates 3D pose, and finds available placement slots on a 12×14-stud build zone.
 
