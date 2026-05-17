@@ -263,7 +263,7 @@ ros2 run brick_gui brick_gui_node
 
 ### Camera Vision
 
-![Perception Data](assets/snapshot_1778121623.png)
+![Perception Data](assets/rosbag_image.png)
 
 ---
 
