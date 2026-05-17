@@ -109,8 +109,6 @@ BrickPickNPlace-RS2/
 | Bricks | Large LEGO bricks (4x2 = 100mm x 50mm, 15mm studs) |
 | Microphone | Computer headset or USB microphone |
 
-> Add workspace setup photos here when available.
-
 ### Software
 
 **1. Install build tools, ROS2 packages, and MoveIt Task Constructor:**
