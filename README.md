@@ -113,15 +113,21 @@ BrickPickNPlace-RS2/
 
 ### Software
 
+**1. Install build tools, ROS2 packages, and MoveIt Task Constructor:**
 ```bash
-# ROS2 + MoveIt2 + UR driver
-sudo apt install ros-humble-moveit ros-humble-ur-robot-driver ros-humble-cv-bridge
+sudo apt update
+sudo apt install -y \
+  python3-colcon-common-extensions \
+  python3-rosdep \
+  ros-humble-moveit \
+  ros-humble-ur-robot-driver \
+  ros-humble-cv-bridge \
+  ros-humble-moveit-task-constructor-*
+```
 
-# Python packages
-pip install opencv-python pyrealsense2 numpy
-
-# Voice Interface dependencies
-pip install SpeechRecognition pyaudio
+**2. Install Python packages:**
+```bash
+pip install opencv-python pyrealsense2 numpy SpeechRecognition pyaudio
 ```
 
 > If `pip install pyaudio` fails, install the system dependency first:
@@ -130,39 +136,28 @@ pip install SpeechRecognition pyaudio
 > pip install pyaudio
 > ```
 
-```bash
-# Clone the repository
-git clone https://github.com/DanishUTS/BrickPickNPlace-RS2.git
-cd BrickPickNPlace-RS2
-
-# Build
-source /opt/ros/humble/setup.bash
-colcon build
-source install/setup.bash
-```
-
-### Install Build Tools
-
-```bash
-sudo apt update
-
-sudo apt install -y \
-  python3-colcon-common-extensions \
-  python3-rosdep \
-  ros-humble-moveit-task-constructor-*
-```
-
-### Initialise rosdep
-
+**3. Initialise rosdep:**
 ```bash
 sudo rosdep init
 rosdep update
 ```
 
-### Install Workspace Dependencies
+**4. Clone the repository:**
+```bash
+git clone https://github.com/DanishUTS/BrickPickNPlace-RS2.git
+cd BrickPickNPlace-RS2
+```
 
+**5. Install workspace dependencies:**
 ```bash
 rosdep install --from-paths src --ignore-src -r -y
+```
+
+**6. Build the workspace:**
+```bash
+source /opt/ros/humble/setup.bash
+colcon build
+source install/setup.bash
 ```
 
 ---
@@ -201,53 +196,53 @@ source install/setup.bash
 ros2 run brick_vision brick_detector
 ```
 
-**Terminal 4 — Brick Interaction:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run brick_interaction brick_interaction_node
-```
-
-**Terminal 5 — GUI:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run brick_gui brick_gui_node
-```
-
-**Terminal 6 — Motion Planning and Control:**
+**Terminal 4 — Motion Planning and Control:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 launch ur3e_motion_mtc ur3e_motion_mtc.launch.py
 ```
 
-**Terminal 7 — Voice Interface: Voice Input Node:**
+**Terminal 5 — Brick Interaction:**
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run brick_interaction brick_interaction_node
+```
+
+**Terminal 6 — Voice Interface: Voice Input Node:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface voice_input_node
 ```
 
-**Terminal 8 — Voice Interface: Command Parser Node:**
+**Terminal 7 — Voice Interface: Command Parser Node:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface command_parser_node
 ```
 
-**Terminal 9 — Voice Interface: System Command Listener:**
+**Terminal 8 — Voice Interface: System Command Listener:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface system_command_listener
 ```
 
-**Terminal 10 — Voice Interface: Reset Executor Node:**
+**Terminal 9 — Voice Interface: Reset Executor Node:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface reset_executor_node
+```
+
+**Terminal 10 — GUI:**
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run brick_gui brick_gui_node
 ```
 
 ---
