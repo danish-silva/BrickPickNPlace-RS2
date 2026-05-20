@@ -28,6 +28,7 @@ setup(
             # ros2 run brick_interaction brick_interaction_node
             'brick_interaction_node = brick_interaction.interaction_node:main',
             'pose_transform_test    = brick_interaction.pose_transform_test:main',
+            'frame_transform_node   = brick_interaction.frame_transform_node:main',
         ],
     },
 )

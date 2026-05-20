@@ -6,6 +6,7 @@
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/empty.hpp>
 #include <mutex>
 #include <atomic>
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
@@ -79,15 +80,27 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
-  object.primitives[0].dimensions = { 0.1, 0.05, 0.04 };
+  // dims = { length, width, height }. The published brick.z is the TOP
+  // surface (camera depth reading) but MoveIt centres the box on pose.z,
+  // so subtract half the height to make the box visually align with the
+  // real brick.
+  const double box_x = 0.1, box_y = 0.05, box_z = 0.04;
+  object.primitives[0].dimensions = { box_x, box_y, box_z };
 
   geometry_msgs::msg::Pose pose;
   pose.position.x = brick.x;
   pose.position.y = brick.y;
-  pose.position.z = brick.z;
-  pose.orientation.w = 1.0;
+  pose.position.z = brick.z - box_z / 2.0;
+
+  // Use the brick's actual orientation from PoseData. Previously this was
+  // hardcoded to identity (w=1.0), causing every brick to spawn aligned with
+  // world X regardless of its real yaw.
+  tf2::Quaternion brick_q;
+  brick_q.setRPY(brick.roll, brick.pitch, brick.yaw);
+  pose.orientation = tf2::toMsg(brick_q);
+
   object.pose = pose;
-  object.operation = object.ADD;   // <-- this was missing
+  object.operation = object.ADD;
 
   // ground plane
   moveit_msgs::msg::CollisionObject ground;
@@ -119,33 +132,60 @@ void MTCTaskNode::setupPlanningScene()
 // This function creates and executes the MTC task. It first initializes the task, then plans a solution, and finally executes it. If any of these steps fail, it logs an error message.
 void MTCTaskNode::doTask()
 {
-  RCLCPP_INFO(LOGGER, "Starting doTask");
-  task_ = createTask();
-  RCLCPP_INFO(LOGGER, "Task created");
+  // Strict requirement: never execute with fewer than this many task-level
+  // solutions. front() picks the lowest-cost one, so more candidates ⇒ better.
+  constexpr size_t REQUIRED_SOLUTIONS = 10;
+  constexpr int    MAX_REPLANS        = 10;   // re-create the task at most this many times
 
-  try
+  RCLCPP_INFO(LOGGER, "Starting doTask (require exactly %zu solutions before execution)",
+              REQUIRED_SOLUTIONS);
+
+  int attempts = 0;
+  while (rclcpp::ok() && attempts < MAX_REPLANS)
   {
-    RCLCPP_INFO(LOGGER, "Initializing task");
-    task_.init();
-    RCLCPP_INFO(LOGGER, "Task initialized successfully");
+    attempts++;
+    RCLCPP_INFO(LOGGER, "Planning attempt %d/%d", attempts, MAX_REPLANS);
+
+    task_ = createTask();
+
+    try
+    {
+      task_.init();
+    }
+    catch (mtc::InitStageException& e)
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, e);
+      continue;
+    }
+
+    if (!task_.plan(REQUIRED_SOLUTIONS))
+    {
+      RCLCPP_WARN(LOGGER, "Attempt %d produced 0 solutions, retrying", attempts);
+      continue;
+    }
+
+    const size_t found = task_.solutions().size();
+    RCLCPP_INFO(LOGGER, "Attempt %d: %zu solution(s) (need %zu)",
+                attempts, found, REQUIRED_SOLUTIONS);
+
+    if (found >= REQUIRED_SOLUTIONS)
+    {
+      break;   // success path
+    }
   }
-  catch (mtc::InitStageException& e)
+
+  const size_t solution_count = task_.solutions().size();
+  if (solution_count < REQUIRED_SOLUTIONS)
   {
-    RCLCPP_ERROR_STREAM(LOGGER, e);
+    RCLCPP_ERROR(LOGGER,
+                 "Aborting: only got %zu of required %zu solutions after %d attempts",
+                 solution_count, REQUIRED_SOLUTIONS, attempts);
     return;
   }
 
-  RCLCPP_INFO(LOGGER, "Starting task planning for 5 solutions");
-  if (!task_.plan(10)) // If we cant come up with 2 versions of the task, we consider it a failure. 2 is the minimum
-  {
-    RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
-    return;
-  }
-  RCLCPP_INFO(LOGGER, "Task planning succeeded");
-
+  RCLCPP_INFO(LOGGER, "Got %zu solutions — executing lowest-cost", solution_count);
   task_.introspection().publishSolution(*task_.solutions().front());
 
-  RCLCPP_INFO(LOGGER, "Executing task");
   auto result = task_.execute(*task_.solutions().front());
   if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
   {
@@ -153,8 +193,6 @@ void MTCTaskNode::doTask()
     return;
   }
   RCLCPP_INFO(LOGGER, "Task execution succeeded");
-
-  return;
 }
 
 mtc::Task MTCTaskNode::createTask()
@@ -218,7 +256,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.02, 0.20);
+      stage->setMinMaxDistance(0.0, 0.20);
 
       // Approach from above — move downward in world frame
       geometry_msgs::msg::Vector3Stamped vec;
@@ -288,7 +326,7 @@ mtc::Task MTCTaskNode::createTask()
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.02, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
+      stage->setMinMaxDistance(0.0, 0.20); //Finding solutions that lift the object at least 3cm, but no more than 20cm. This is to avoid collisions with the environment and to ensure a successful lift.
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "lift_object");
 
@@ -382,7 +420,7 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.02, 0.20);
+      stage->setMinMaxDistance(0.0, 0.20);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "retreat");
 
@@ -431,6 +469,14 @@ int main(int argc, char** argv)
   PoseData brick_pose{};
   PoseData target_pose{};
   
+  // Publisher used to ask brick_vision for a fresh snapshot once the
+  // current pick-and-place task has finished and the arm is back at
+  // camera_home. The interaction node bootstraps the first snapshot;
+  // every subsequent cycle is kicked off from here.
+  auto snapshot_trigger_pub =
+      mtc_task_node->node_->create_publisher<std_msgs::msg::Empty>(
+          "/snapshot_trigger", 10);
+
   auto pose_subscription = mtc_task_node->node_->create_subscription<std_msgs::msg::Float64MultiArray>(
       "ordered_pose_array",
       10,
@@ -498,7 +544,8 @@ int main(int argc, char** argv)
     mtc_task_node->setPoseData(brick_pose, target_pose);
     mtc_task_node->setupPlanningScene();
     mtc_task_node->doTask();
-    RCLCPP_INFO(LOGGER, "Task completed, waiting for next poses...");
+    RCLCPP_INFO(LOGGER, "Task completed — publishing /snapshot_trigger to start next cycle");
+    snapshot_trigger_pub->publish(std_msgs::msg::Empty());
   }
 
   spin_thread->join();

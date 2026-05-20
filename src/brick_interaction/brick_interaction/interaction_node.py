@@ -19,10 +19,11 @@ Responsibilities:
 
 Topics:
   Subscribes:  /brick_command        (std_msgs/String)              <- brick_gui
-  Subscribes:  /brick_detector/brick_pose (geometry_msgs/PoseStamped) <- brick_vision
-  Subscribes:  /brick_detector/detections (vision_msgs/Detection3DArray) <- brick_vision
-  Subscribes:  /brick_detector/available_slots (geometry_msgs/PoseArray) <- brick_vision
-  Publishes:   /snapshot_trigger     (std_msgs/Empty)               -> brick_vision
+  Subscribes:  /brick_detector/brick_pose (geometry_msgs/PoseStamped) <- brick_vision (camera frame, diagnostic)
+  Subscribes:  /pickup_bricks        (vision_msgs/Detection3DArray) <- frame_transform_node (base_link)
+  Subscribes:  /available_slots_base (geometry_msgs/PoseArray)      <- frame_transform_node (base_link)
+  Publishes:   /snapshot_trigger     (std_msgs/Empty)               -> brick_vision (bootstrap only;
+                                                                       motion node re-triggers thereafter)
   Publishes:   /ordered_pose_array   (std_msgs/Float64MultiArray)   -> ur3e_motion_mtc
   Publishes:   /system_status        (std_msgs/String)              -> brick_gui
 """
@@ -71,9 +72,9 @@ GRIPPER_SPEED       = 0.05    # m/s — how fast the fingers travel
 GRIPPER_UPDATE_HZ   = 20.0    # publish rate of intermediate widths
 
 # Current outputs from brick_vision's node name + private topics.
-VISION_BRICK_POSE_TOPIC = '/brick_detector/brick_pose'
-VISION_DETECTIONS_TOPIC = '/brick_detector/detections'
-VISION_AVAILABLE_SLOTS_TOPIC = '/brick_detector/available_slots'
+VISION_BRICK_POSE_TOPIC = '/brick_detector/brick_pose'        # camera frame (diagnostic only)
+VISION_DETECTIONS_TOPIC = '/pickup_bricks'                    # base_link, via frame_transform_node
+VISION_AVAILABLE_SLOTS_TOPIC = '/available_slots_base'        # base_link, via frame_transform_node
 VISION_SCAN_TRIGGER_TOPIC = '/snapshot_trigger'
 
 # MTC consumes one message containing exactly two poses: pick brick, place slot.
@@ -172,11 +173,15 @@ class BrickInteractionNode(Node):
         self.create_subscription(
             PoseStamped, VISION_BRICK_POSE_TOPIC, self._vision_pose_callback, 10
         )
+        # Bridge outputs use TRANSIENT_LOCAL — match it so we receive the
+        # latched snapshot as soon as we subscribe.
         self.create_subscription(
-            Detection3DArray, VISION_DETECTIONS_TOPIC, self._detection_callback, 1
+            Detection3DArray, VISION_DETECTIONS_TOPIC,
+            self._detection_callback, latched_qos
         )
         self.create_subscription(
-            PoseArray, VISION_AVAILABLE_SLOTS_TOPIC, self._available_slots_callback, 1
+            PoseArray, VISION_AVAILABLE_SLOTS_TOPIC,
+            self._available_slots_callback, latched_qos
         )
 
         # --- State machine ---
@@ -408,7 +413,12 @@ class BrickInteractionNode(Node):
         self._execute_phase()
 
     def _request_fresh_scan(self) -> None:
-        """Ask brick_vision for a new snapshot and wait for matching outputs."""
+        """Wait for the next brick_vision snapshot.
+
+        First call after entering RUNNING bootstraps the cycle by publishing
+        /snapshot_trigger. Every subsequent cycle is triggered by the motion
+        node once it finishes a pick-and-place task and returns to camera_home.
+        """
         if self._sm.state != SystemState.RUNNING:
             return
 
@@ -425,15 +435,19 @@ class BrickInteractionNode(Node):
         self._latest_detections = None
         self._latest_available_slots = None
 
+        # Scan timeout removed — wait indefinitely for fresh detections.
         self._cancel_scan_timeout()
-        self._scan_timeout_timer = self.create_timer(
-            SCAN_TIMEOUT_S, self._on_scan_timeout
-        )
 
-        self.get_logger().info(
-            f'Requesting fresh brick_vision snapshot on {VISION_SCAN_TRIGGER_TOPIC}.'
-        )
-        self._scan_trigger_pub.publish(Empty())
+        if self._placed_count == 0:
+            self.get_logger().info(
+                f'Bootstrapping cycle: publishing first /snapshot_trigger on '
+                f'{VISION_SCAN_TRIGGER_TOPIC}.'
+            )
+            self._scan_trigger_pub.publish(Empty())
+        else:
+            self.get_logger().info(
+                'Waiting for next /snapshot_trigger from motion node…'
+            )
 
     def _try_process_fresh_scan(self) -> None:
         """Proceed once the current scan has both detections and available slots."""
