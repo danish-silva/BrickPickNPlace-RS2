@@ -129,47 +129,6 @@ void MTCTaskNode::setupPlanningScene()
   psi.applyCollisionObject(ground);
 }
 
-// This function creates and executes the MTC task. It first initializes the task, then plans a solution, and finally executes it. If any of these steps fail, it logs an error message.
-// void MTCTaskNode::doTask()
-// {
-//   RCLCPP_INFO(LOGGER, "Starting doTask");
-//   task_ = createTask();
-//   RCLCPP_INFO(LOGGER, "Task created");
-
-//   try
-//   {
-//     RCLCPP_INFO(LOGGER, "Initializing task");
-//     task_.init();
-//     RCLCPP_INFO(LOGGER, "Task initialized successfully");
-//   }
-//   catch (mtc::InitStageException& e)
-//   {
-//     RCLCPP_ERROR_STREAM(LOGGER, e);
-//     return;
-//   }
-
-//   RCLCPP_INFO(LOGGER, "Starting task planning for 10 solutions");
-//   if (!task_.plan(10)) // If we cant come up with 10 versions of the task, we consider it a failure. 10 is the minimum
-//   {
-//     RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
-//     return;
-//   }
-//   RCLCPP_INFO(LOGGER, "Task planning succeeded");
-
-//   task_.introspection().publishSolution(*task_.solutions().front());
-
-//   RCLCPP_INFO(LOGGER, "Executing task");
-//   auto result = task_.execute(*task_.solutions().front());
-//   if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
-//   {
-//     RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
-//     return;
-//   }
-//   RCLCPP_INFO(LOGGER, "Task execution succeeded");
-
-//   return;
-// }
-
 void MTCTaskNode::doTask()
 {
   constexpr double PATH_COST_THRESHOLD = 30.0;  // Set high initially to observe real costs, then tune down
