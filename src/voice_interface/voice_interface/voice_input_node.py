@@ -280,11 +280,14 @@ class VoiceInputNode(Node):
             'reset',
             'build tower',
             'build line',
+            'pick red',
+            'pick blue',
+            'pick black'
         ]
 
         self.get_logger().info('Voice Input Node started.')
         self.get_logger().info('Modes: [m] one mic command, [c] continuous mic, [k] keyboard')
-        self.get_logger().info('Commands: start, pause, stop, reset, build tower, build line')
+        self.get_logger().info('Commands: start, pause, stop, reset, build tower, build line', 'pick red', 'pick blue', 'pick black')
 
         self.input_thread = threading.Thread(target=self.input_loop, daemon=True)
         self.input_thread.start()
@@ -299,35 +302,56 @@ class VoiceInputNode(Node):
         text = text.lower().strip()
 
         alias_map = {
+            #start
             'go': 'start',
             'begin': 'start',
             'star': 'start',
             'stark': 'start',
 
+            #pause
             'pause robot': 'pause',
             'hold': 'pause',
             'wait': 'pause',
 
+            #stop
             'halt': 'stop',
             'cancel': 'stop',
             'stock': 'stop',
             'top': 'stop',
 
+            #reset
             'home': 'reset',
             'go home': 'reset',
             'recent': 'reset',
             'resent': 'reset',
             'resets': 'reset',
 
+            # build line
             'tower': 'build tower',
             'build our': 'build tower',
             'build power': 'build tower',
             'bill tower': 'build tower',
 
+            # build line
             'line': 'build line',
             'build mine': 'build line',
             'build lion': 'build line',
             'bill line': 'build line',
+
+            # red
+            'red': 'pick red',
+            'pick reds': 'pick red',
+            'select red': 'pick red',
+
+            # blue
+            'blue': 'pick blue',
+            'pick blues': 'pick blue',
+            'select blue': 'pick blue',
+
+            # black
+            'black': 'pick black',
+            'pick blacks': 'pick black',
+            'select black': 'pick black',
         }
 
         if text in alias_map:
