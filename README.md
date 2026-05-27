@@ -249,15 +249,15 @@ ros2 run brick_gui brick_gui_node
 
 ### Demonstration Video
 
-[![Watch the LeBrick n' Place demonstration](https://img.youtube.com/vi/YMXdymKKalc/maxresdefault.jpg)](https://youtu.be/YMXdymKKalc)
+[![Watch the LeBrick n' Place demonstration](https://img.youtube.com/vi/YMXdymKKalc/maxresdefault.jpg)](https://youtube.com/shorts/HnnYeVQIz8Y?feature=share)
 
-### System Integration
+### GUI Screen
 
-![Entire fused system in Simulation](assets/integration_image.png)
+![User Interface Displayed to User](assets/gui.png)
 
 ### Robot Setup
 
-![UR3e robot with OnRobot RG2 gripper](assets/ur3e_image.jpg)
+![UR3e robot with OnRobot RG2 gripper](assets/setup.jpg)
 
 ### Camera Vision
 
