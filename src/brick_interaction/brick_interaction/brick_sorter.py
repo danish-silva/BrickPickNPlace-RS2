@@ -146,6 +146,11 @@ def bricks_from_detections(msg) -> list[Brick]:
         List of Brick objects with coordinates in the perception frame.
         NOTE: These may need a TF transform to the robot base frame
         before being used for motion planning.
+
+    Size resolution:
+        Prefer Detection3D.id when populated — brick_vision publishes the
+        variant name there ("regular" / "small"). Fall back to deriving
+        a label from bbox dimensions when id is empty.
     """
     bricks = []
     for det in msg.detections:
@@ -155,13 +160,18 @@ def bricks_from_detections(msg) -> list[Brick]:
         confidence = float(det.results[0].hypothesis.score)
         p = det.bbox.center.position
         q = det.bbox.center.orientation
+
+        size_label = (det.id or '').strip().lower()
+        if not size_label:
+            size_label = _size_label_from_bbox(det.bbox.size)
+
         bricks.append(Brick(
             x=p.x,
             y=p.y,
             z=p.z,
             theta=_yaw_from_quaternion(q),
             colour=colour,
-            size=_size_label_from_bbox(det.bbox.size),
+            size=size_label,
             confidence=confidence,
         ))
     return bricks

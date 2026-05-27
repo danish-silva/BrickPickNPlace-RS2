@@ -81,9 +81,11 @@ class FrameTransformNode(Node):
         # Per-axis offsets (in the target frame) applied to every BRICK pose
         # AFTER the tf transform. Use these to nudge the pick target when the
         # gripper consistently lands offset from the brick. Set 0 to disable.
-        self.declare_parameter("pickup_offset_x_m", 0.008)
-        self.declare_parameter("pickup_offset_y_m", -0.02)
-        self.declare_parameter("pickup_offset_z_m", 0.0)
+        # X: 0.008 - 0.007 = 0.001 (robot was 7mm too far in +X)
+        # Z: -0.01 makes the robot dive 1cm further down to grasp the brick
+        self.declare_parameter("pickup_offset_x_m", -0.004)
+        self.declare_parameter("pickup_offset_y_m", -0.025)
+        self.declare_parameter("pickup_offset_z_m", -0.025)
 
         self.target_frame  = str(self.get_parameter("target_frame").value)
         bricks_in          = str(self.get_parameter("bricks_in").value)
@@ -193,6 +195,12 @@ class FrameTransformNode(Node):
 
         for pose in msg.poses:
             tp = do_transform_pose(pose, tf)
+            # Same per-axis nudge applied to bricks — pickup offsets compensate
+            # for shared gripper-vs-camera mounting / calibration error that
+            # affects placement just as much as it does pickup.
+            tp.position.x += self.pickup_dx
+            tp.position.y += self.pickup_dy + 0.007
+            tp.position.z += self.pickup_dz + 0.01
             # Lift the placement target by half a brick + clearance so the
             # collision-box bottom sits above the build plate (see param doc).
             if self.slot_z_offset != 0.0:
@@ -203,7 +211,9 @@ class FrameTransformNode(Node):
         self.get_logger().debug(
             f"Transformed {len(out.poses)} slot(s) "
             f"{source_frame} → {self.target_frame}  "
-            f"(z offset = +{self.slot_z_offset*1000:.0f} mm)")
+            f"(xyz nudge = {self.pickup_dx*1000:+.0f}, "
+            f"{self.pickup_dy*1000:+.0f}, {self.pickup_dz*1000:+.0f} mm, "
+            f"z lift = +{self.slot_z_offset*1000:.0f} mm)")
 
 
 def main(args=None):

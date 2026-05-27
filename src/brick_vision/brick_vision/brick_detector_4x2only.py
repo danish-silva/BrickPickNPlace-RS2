@@ -33,41 +33,14 @@ import json
 import os
 
 # ── Brick dimensions (metres) ──────────────────────────────────────────────
-# Defaults kept for backwards-compat references (e.g. publishing fallbacks).
-# Actual detection iterates over BRICK_VARIANTS below.
-BRICK_LENGTH_M   = 0.100   # 100 mm (4-stud axis, regular)
+BRICK_LENGTH_M   = 0.100   # 100 mm (4-stud axis)
 BRICK_WIDTH_M    = 0.050   # 50 mm  (2-stud axis)
 BRICK_ASPECT     = BRICK_LENGTH_M / BRICK_WIDTH_M  # 2.0
 STUD_DIAMETER_M  = 0.015   # 15 mm
 
-# Supported brick variants. Each contour is matched against every entry;
-# the lowest-error match wins. To add another brick size, append a dict.
-BRICK_VARIANTS = [
-    {
-        "name":           "regular",       # published as Detection3D.id
-        "length_m":       0.100,
-        "width_m":        0.050,
-        "studs_long":     4,
-        "studs_short":    2,
-        "expected_studs": 8,
-    },
-    {
-        "name":           "small",
-        "length_m":       0.075,           # 3-stud axis = 3 × 25 mm
-        "width_m":        0.050,
-        "studs_long":     3,
-        "studs_short":    2,
-        "expected_studs": 6,
-    },
-]
-# Pre-compute the aspect for each variant
-for _v in BRICK_VARIANTS:
-    _v["aspect"] = _v["length_m"] / _v["width_m"]
-
 # ── Primary detection tolerances (colour + shape) ─────────────────────────
-ASPECT_TOL       = 0.20    # ±20 % on aspect ratio — tighter so 1.5 (small)
-                           #  and 2.0 (regular) don't overlap each other
-SIZE_TOL         = 0.25    # ±25 % on metric dimensions
+ASPECT_TOL       = 0.35    # ±35 % on aspect ratio
+SIZE_TOL         = 0.30    # ±30 % on metric dimensions
 MIN_CONTOUR_AREA = 500     # pixels – reject noise
 
 # ── Stud verification (HoughCircles) ─────────────────────────────────────
@@ -76,7 +49,7 @@ HOUGH_MIN_DIST_M = 0.012   # min distance between circle centres (metres)
 HOUGH_PARAM1     = 50      # Canny high threshold
 HOUGH_PARAM2     = 18      # accumulator threshold (lower = more sensitive)
 HOUGH_RADIUS_TOL = 0.50    # ±50 % on expected stud radius in pixels
-EXPECTED_STUDS   = 8       # fallback only — confidence calc uses the variant
+EXPECTED_STUDS   = 8       # 4x2 brick
 
 # ── Confidence weights ───────────────────────────────────────────────────
 CONF_BASE_MAX       = 0.65  # max confidence from colour + size alone
@@ -361,35 +334,6 @@ class BrickDetector:
         point = rs.rs2_deproject_pixel_to_point(self.intrinsics, [px, py], depth_m)
         return np.array(point)  # [x, y, z] in metres
 
-    # ── Variant matching ─────────────────────────────────────────────────
-    @staticmethod
-    def _match_variant(aspect, w_m, h_m):
-        """Return the best-matching brick variant dict, or None if none pass.
-
-        Each variant is checked against aspect-ratio AND metric-size tolerances.
-        Ties (or multiple passing variants) are resolved by lowest combined
-        aspect+size error so the right size is picked even when the brick is
-        seen at an oblique angle.
-        """
-        best = None
-        best_err = float("inf")
-        for v in BRICK_VARIANTS:
-            if abs(aspect - v["aspect"]) > v["aspect"] * ASPECT_TOL:
-                continue
-            if abs(w_m - v["length_m"]) > v["length_m"] * SIZE_TOL:
-                continue
-            if abs(h_m - v["width_m"]) > v["width_m"] * SIZE_TOL:
-                continue
-            err = (
-                abs(aspect - v["aspect"]) / v["aspect"] +
-                abs(w_m - v["length_m"]) / v["length_m"] +
-                abs(h_m - v["width_m"])  / v["width_m"]
-            )
-            if err < best_err:
-                best_err = err
-                best = v
-        return best
-
     # ── Primary detection: colour segmentation ───────────────────────────────
     def _find_colour_candidates(self, work_img, depth_frame, offset_x, offset_y):
         """
@@ -446,6 +390,9 @@ class BrickDetector:
 
                 aspect = w_px / h_px
 
+                if abs(aspect - BRICK_ASPECT) > BRICK_ASPECT * ASPECT_TOL:
+                    continue
+
                 cx_full = int(cx_local + offset_x)
                 cy_full = int(cy_local + offset_y)
 
@@ -464,16 +411,14 @@ class BrickDetector:
                 w_m = self.pixel_size_to_metres(w_px, depth_m)
                 h_m = self.pixel_size_to_metres(h_px, depth_m)
 
-                # Try every variant; keep the lowest-error match.
-                variant = self._match_variant(aspect, w_m, h_m)
-                if variant is None:
+                length_ok = abs(w_m - BRICK_LENGTH_M) < BRICK_LENGTH_M * SIZE_TOL
+                width_ok  = abs(h_m - BRICK_WIDTH_M)  < BRICK_WIDTH_M  * SIZE_TOL
+                if not (length_ok and width_ok):
                     continue
 
-                aspect_err = abs(aspect - variant["aspect"]) / variant["aspect"]
-                size_err = (
-                    abs(w_m - variant["length_m"]) / variant["length_m"] +
-                    abs(h_m - variant["width_m"])  / variant["width_m"]
-                ) / 2.0
+                aspect_err = abs(aspect - BRICK_ASPECT) / BRICK_ASPECT
+                size_err = (abs(w_m - BRICK_LENGTH_M) / BRICK_LENGTH_M +
+                            abs(h_m - BRICK_WIDTH_M) / BRICK_WIDTH_M) / 2.0
 
                 # ROI in work_img coords for stud verification
                 bx, by, bw, bh = cv2.boundingRect(cnt)
@@ -502,8 +447,6 @@ class BrickDetector:
                     "roi_local":  (roi_x, roi_y, roi_w, roi_h),
                     "aspect_err": aspect_err,
                     "size_err":   size_err,
-                    "variant":    variant,                 # full variant dict
-                    "size":       variant["name"],         # "regular" / "small"
                 })
 
         return candidates
@@ -596,14 +539,11 @@ class BrickDetector:
             stud_count, stud_circles = self._verify_studs_in_roi(
                 work_img, cand["roi_local"], cand["depth_m"])
 
-            # Confidence: base from colour+size, bonus from studs.
-            # Use the variant's expected stud count so a 3x2 brick with 6
-            # detected studs is treated as fully verified.
-            variant_expected = cand["variant"]["expected_studs"]
+            # Confidence: base from colour+size, bonus from studs
             base_conf = max(0.0, CONF_BASE_MAX - cand["aspect_err"] - cand["size_err"])
 
             if stud_count >= MIN_STUDS_FOR_BONUS:
-                stud_ratio = min(stud_count, variant_expected) / variant_expected
+                stud_ratio = min(stud_count, EXPECTED_STUDS) / EXPECTED_STUDS
                 stud_bonus = stud_ratio * CONF_STUD_BONUS
             else:
                 stud_bonus = 0.0
@@ -626,7 +566,6 @@ class BrickDetector:
                 "roi_local":    cand["roi_local"],
                 "contour":      cand["contour"],
                 "confidence":   confidence,
-                "size":         cand["size"],   # "regular" or "small"
             })
 
         detections.sort(key=lambda d: d["confidence"], reverse=True)
@@ -1287,10 +1226,6 @@ def main(args=None):
                 d3 = Detection3D()
                 d3.header.stamp = stamp
                 d3.header.frame_id = frame
-                # Brick size variant ("regular" or "small") published in the
-                # Detection3D `id` field — appears as an extra `id: ...` line
-                # in `ros2 topic echo /pickup_bricks`.
-                d3.id = str(det.get("size", ""))
                 bbox = BoundingBox3D()
                 bbox.center.position.x = float(det["center_3d"][0])
                 bbox.center.position.y = float(det["center_3d"][1])
