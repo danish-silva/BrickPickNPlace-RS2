@@ -1312,42 +1312,80 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 
 # Voice Interface Subsystem
 
-The Voice Interface subsystem provides task-level control of the robot through voice commands via microphone or keyboard input. It translates spoken or typed commands into ROS2 messages published to the shared `/brick_command` topic, which is consumed by the Interaction & Execution subsystem.
+## Purpose
 
+The `voice_interface` package is the task-level control layer for the LeBrick n' Place system. It allows users to interact with the UR3e through spoken or typed commands, converting human input into ROS2 messages that flow to the Interaction & Execution subsystem via the shared `/brick_command` topic.
 
-## Nodes
+The subsystem is responsible for:
+
+- Capturing voice input via microphone or keyboard
+- Normalising and mapping raw input to valid commands using an alias system
+- Publishing parsed commands to `/brick_command` for the interaction node to act on
+- Publishing preset build requests to `/build_request` for HD-level task control
+- Publishing custom brick sequences to `/block_sequence`
+- Monitoring topic communication for debugging via `system_command_listener`
+
+This package does not perform motion planning or robot control directly. It communicates exclusively through ROS2 topics, acting as the human input layer to the rest of the system.
+
+## What the Nodes Do
+
+```
+User (voice / keyboard)
+        │
+        ▼
+voice_input_node  ──►  /voice_command_raw
+                                │
+                                ▼
+                    command_parser_node  ──►  /brick_command  ──►  brick_interaction
+                                        ──►  /build_request   ──►  brick_interaction
+                                        ──►  /block_sequence  ──►  brick_interaction
+                                │
+                                ▼
+                   system_command_listener  (monitoring only)
+```
+
+### Main Nodes
 
 | Node | File | Description |
 |------|------|-------------|
-| `voice_input_node` | `voice_input_node.py` | Captures microphone or keyboard input and publishes raw text to `/voice_command_raw` |
-| `command_parser_node` | `command_parser_node.py` | Subscribes to `/voice_command_raw`, normalises and maps input, publishes parsed commands to `/brick_command` |
-| `system_command_listener` | `system_command_listener.py` | Monitors `/brick_command` and related topics — used for integration debugging and status logging |
-| `reset_executor_node` | `reset_executor_node.py` | Temporary execution node — listens to `/brick_command` and directly executes joint trajectories on the UR3e for standalone testing |
+| `voice_input_node` | `voice_input_node.py` | Captures microphone or keyboard input, normalises aliases, and publishes raw command text to `/voice_command_raw` |
+| `command_parser_node` | `command_parser_node.py` | Subscribes to `/voice_command_raw`, maps input to structured commands, and publishes to `/brick_command`, `/build_request`, or `/block_sequence` |
+| `system_command_listener` | `system_command_listener.py` | Monitoring-only node — subscribes to all command topics and logs received messages to terminal for debugging |
+| `reset_executor_node` | `reset_executor_node.py` | **Standalone testing node only — not used in the integrated system.** Was used to verify voice commands triggered robot motion before full integration with the Interaction & Execution subsystem. Do not launch alongside `brick_interaction_node`. |
 
-## Topics
+---
 
-| Topic | Type | Publisher | Subscriber(s) | Description |
-|-------|------|-----------|----------------|-------------|
-| `/voice_command_raw` | `std_msgs/String` | `voice_input_node` | `command_parser_node` | Raw unprocessed voice or keyboard input |
-| `/brick_command` | `std_msgs/String` | `command_parser_node` | `brick_interaction`, `reset_executor_node`, `system_command_listener` | Shared command bus used by all subsystems |
-| `/build_request` | `std_msgs/String` | `command_parser_node` | `brick_interaction` | Preset build commands (BUILD_TOWER, BUILD_LINE) |
-| `/block_sequence` | `std_msgs/String` | `command_parser_node` | `brick_interaction` | Custom brick placement sequence commands |
-| `/joint_states` | `sensor_msgs/JointState` | UR driver | `reset_executor_node` | Current robot joint positions used for trajectory planning |
-| `/system_status` | `std_msgs/String` | `brick_interaction` | `system_command_listener` | System status feedback (monitored for debugging) |
+## ROS2 Interface
 
-## Supported Commands
+### Subscribed Topics
+
+| Topic | Type | Source | Purpose |
+|-------|------|--------|---------|
+| `/voice_command_raw` | `std_msgs/String` | `voice_input_node` | Raw normalised text from mic or keyboard input |
+| `/system_status` | `std_msgs/String` | `brick_interaction` | System state feedback — monitored by `system_command_listener` for debugging |
+
+### Published Topics
+
+| Topic | Type | Destination | Purpose |
+|-------|------|-------------|---------|
+| `/voice_command_raw` | `std_msgs/String` | `command_parser_node` | Raw command text published by `voice_input_node` |
+| `/brick_command` | `std_msgs/String` | `brick_interaction`, `system_command_listener` | Shared command bus — carries `start`, `pause`, `stop`, `reset` |
+| `/build_request` | `std_msgs/String` | `brick_interaction` | Preset build commands: `BUILD_TOWER`, `BUILD_LINE` |
+| `/block_sequence` | `std_msgs/String` | `brick_interaction` | Custom brick placement sequences e.g. `1,2,3` |
+
+### Supported Commands
 
 | Voice / Keyboard Input | Aliases | Published To | Published Value | Behaviour |
 |------------------------|---------|--------------|-----------------|-----------|
-| `start` | `begin`, `go` | `/brick_command` | `start` | Executes demo trajectory sequence |
-| `pause` | `hold`, `wait` | `/brick_command` | `pause` | Cancels active trajectory |
-| `stop` | `halt`, `cancel` | `/brick_command` | `stop` | Cancels trajectory and returns robot to home pose |
-| `reset` | `home`, `go home` | `/brick_command` | `reset` | Returns robot to home pose |
-| `build tower` | `tower` | `/build_request` | `BUILD_TOWER` | Triggers tower build preset |
-| `build line` | `line` | `/build_request` | `BUILD_LINE` | Triggers line build preset |
+| `start` | `begin`, `go` | `/brick_command` | `start` | Starts the pick-and-place cycle |
+| `pause` | `hold`, `wait` | `/brick_command` | `pause` | Pauses active motion |
+| `stop` | `halt`, `cancel` | `/brick_command` | `stop` | Stops motion and returns robot to home |
+| `reset` | `home`, `go home` | `/brick_command` | `reset` | Returns robot to home position |
+| `build tower` | `tower` | `/build_request` | `BUILD_TOWER` | Triggers vertical tower build preset |
+| `build line` | `line` | `/build_request` | `BUILD_LINE` | Triggers horizontal line build preset |
 | `sequence 1 2 3` | Spoken e.g. `sequence one two three` | `/block_sequence` | `1,2,3` | Custom brick placement sequence |
 
-## Input Modes
+### Input Modes
 
 | Mode | Key | Description |
 |------|-----|-------------|
@@ -1355,85 +1393,120 @@ The Voice Interface subsystem provides task-level control of the robot through v
 | Continuous microphone | `c` | Keeps listening and processing commands until Ctrl+C |
 | Keyboard | `k` | Accepts typed commands — useful for testing without a microphone |
 
+---
+
+## Usage
+
+### Build
+
+```bash
+cd ~/git/BrickPickNPlace-RS2
+colcon build --packages-select voice_interface
+source install/setup.bash
+```
+
+### Run (Integrated System)
+
+In the integrated system, run these three nodes. Do **not** run `reset_executor_node` alongside `brick_interaction_node`.
+
+```bash
+# Terminal 1 — Voice Input
+ros2 run voice_interface voice_input_node
+
+# Terminal 2 — Command Parser
+ros2 run voice_interface command_parser_node
+
+# Terminal 3 — Monitor (optional, for debugging)
+ros2 run voice_interface system_command_listener
+```
+
+### Run (Standalone Testing Only)
+
+To test the voice interface in isolation without the full system:
+
+```bash
+# Terminal 1 — Voice Input
+ros2 run voice_interface voice_input_node
+
+# Terminal 2 — Command Parser
+ros2 run voice_interface command_parser_node
+
+# Terminal 3 — Reset Executor (standalone test node)
+ros2 run voice_interface reset_executor_node
+```
+
+### Verify the Pipeline
+
+Check each step individually to confirm commands are flowing:
+
+```bash
+# Confirm voice input is publishing
+ros2 topic echo /voice_command_raw
+
+# Confirm parser is forwarding to the shared command bus
+ros2 topic echo /brick_command
+
+# Confirm build requests are publishing
+ros2 topic echo /build_request
+
+# Confirm system status is being received from interaction node
+ros2 topic echo /system_status
+```
+
+---
+
 ## Configuration
 
 | Parameter | Default | File | Description |
 |-----------|---------|------|-------------|
-| `device_index` | `10` | `voice_input_node.py` | Microphone device index — change if mic not detected |
-| `energy_threshold` | `100` | `voice_input_node.py` | Mic sensitivity — lower value = more sensitive |
-| `pause_threshold` | `0.8` | `voice_input_node.py` | Seconds of silence before a command is finalised |
+| `device_index` | `10` | `voice_input_node.py` | Microphone device index — **must match your system**. Run `python3 -c "import speech_recognition as sr; [print(i, m) for i, m in enumerate(sr.Microphone.list_microphone_names())]"` to find the correct index |
+| `energy_threshold` | `100` | `voice_input_node.py` | Mic sensitivity — lower value = more sensitive to quiet speech |
+| `dynamic_energy_threshold` | `False` | `voice_input_node.py` | Set `True` to auto-adjust sensitivity to background noise |
+| `pause_threshold` | `0.8` | `voice_input_node.py` | Seconds of silence before a spoken command is finalised |
 | `phrase_time_limit` | `4s` | `voice_input_node.py` | Maximum duration of a single spoken command |
-| Home joints | `[0.8713, -1.4801, 0.1733, -0.2580, -1.5837, 5.5503]` | `reset_executor_node.py` | Robot home pose in radians (6 joints) |
+| Home joints | `[0.8713, -1.4801, 0.1733, -0.2580, -1.5837, 5.5503]` | `reset_executor_node.py` | Robot home pose in radians — standalone testing only |
 
-## Voice Interface
+---
 
-**Microphone not detected / `device_index` error**
+## Troubleshooting
 
-Run the following to list available audio devices and find your mic's index:
-```bash
-python3 -c "import speech_recognition as sr; print(sr.Microphone.list_microphone_names())"
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| **Microphone not detected / `device_index` error`** | Wrong device index for this machine | Run `python3 -c "import speech_recognition as sr; [print(i, m) for i, m in enumerate(sr.Microphone.list_microphone_names())]"` and update `device_index` in `voice_input_node.py` |
+| **`pyaudio` install fails** | Missing system dependency | Run `sudo apt install portaudio19-dev` then `pip install pyaudio` |
+| **Command not recognised by Google STT** | No internet connection | Check network connection — Google STT requires internet. Use keyboard mode `[k]` to bypass mic and test the rest of the pipeline |
+| **Speech recognised but command not matched** | Unrecognised word or phrasing | Node logs `Speech recognized, but not matched to a valid command.` — speak one of the supported commands clearly or use an alias (e.g. `go`, `halt`, `home`) |
+| **Commands not reaching `brick_interaction`** | Parser not running or topic mismatch | Run `ros2 topic echo /brick_command` — if nothing appears, check `command_parser_node` is running. Run `ros2 topic list` to verify topics exist |
+| **`reset_executor_node` — trajectory action server not available** | UR driver not running | Start the UR driver first. For testing without a robot use `use_fake_hardware:=true` |
+| **No joint states received** | UR driver not running | Run `ros2 topic echo /joint_states` to confirm the driver is publishing — standalone testing only |
+
+---
+
+## Files
+
 ```
-Update `device_index` in `voice_input_node.py` to match your microphone.
-
----
-
-**Command not recognised by Google Speech Recognition**
-
-The system uses Google STT which requires an active internet connection.
-Check your network is available and no firewall is blocking outbound requests.
-Use keyboard mode `[k]` to bypass the mic and test the rest of the pipeline.
-
----
-
-**Speech recognised but command not matched**
-
-The node will log: `Speech recognized, but not matched to a valid command.`
-
-Speak one of the supported commands clearly: `start`, `pause`, `stop`, `reset`, `build tower`, `build line`.
-The node also accepts common aliases (e.g. `go`, `halt`, `home`) — see the Supported Commands table above.
-
----
-
-**`reset_executor_node` — trajectory action server not available**
-
-The UR driver (Terminal 1) must be running before launching `reset_executor_node`.
-Check Terminal 1 for errors. If testing without a physical robot, ensure fake hardware is enabled:
-```bash
-use_fake_hardware:=true
+voice_interface/
+├── voice_interface/
+│   ├── __init__.py
+│   ├── voice_input_node.py          # Mic/keyboard input capture and alias normalisation
+│   ├── command_parser_node.py       # Command mapping and ROS2 topic publishing
+│   ├── system_command_listener.py   # Monitoring and debugging node
+│   └── reset_executor_node.py       # Standalone testing node (not used in integration)
+├── package.xml
+└── setup.py
 ```
 
 ---
 
-**No joint states received**
+## How the Interaction Node Consumes This
 
-`reset_executor_node` requires `/joint_states` from the UR driver to plan trajectories.
-Confirm the driver launched successfully with:
-```bash
-ros2 topic echo /joint_states
-```
+Commands are published as lowercase strings on `/brick_command`. The interaction node subscribes to this topic and feeds them directly into its state machine:
 
----
+- `start` → transitions state to `RUNNING`, begins pick-and-place cycle
+- `pause` → transitions state to `PAUSED`, halts active motion
+- `stop` → transitions state to `IDLE`, cancels motion
+- `reset` → returns state to `IDLE`
 
-**Commands not reaching `brick_interaction`**
+Build presets (`BUILD_TOWER`, `BUILD_LINE`) are published to `/build_request` and consumed by the interaction node's build request callback to set the build mode before triggering the cycle.
 
-Verify each step in the pipeline individually:
-```bash
-# Check voice input is publishing
-ros2 topic echo /voice_command_raw
-
-# Check parser is forwarding
-ros2 topic echo /brick_command
-
-# Check build commands
-ros2 topic echo /build_request
-```
-
----
-
-**`pyaudio` install fails on Ubuntu**
-
-Install the system dependency first:
-```bash
-sudo apt install portaudio19-dev
-pip install pyaudio
-```
+The voice interface and GUI publish to the same `/brick_command` topic, so the interaction node treats both identically.
