@@ -37,6 +37,7 @@ from PyQt5.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QMainWindow,
+    QPushButton,
     QRadioButton,
     QVBoxLayout,
 )
@@ -188,6 +189,23 @@ class MainWindow(QMainWindow):
         self.startButton.clicked.connect(lambda: ros_node.send_command('start'))
         self.pauseButton.clicked.connect(lambda: ros_node.send_command('pause'))
         self.stopButton.clicked.connect(lambda: ros_node.send_command('stop'))
+
+        # Reset button — added programmatically. Sends 'reset' on /brick_command,
+        # which makes the motion node halt the current trajectory and run a
+        # return-home task (current → camera_home). The interaction node also
+        # listens and drops its state machine to IDLE.
+        self.resetButton = QPushButton('Reset → camera_home')
+        self.resetButton.setToolTip(
+            'Halt any active pick-and-place, then move the arm back to '
+            'camera_home. Cycle stays stopped until you press Start again.'
+        )
+        self.resetButton.setStyleSheet(
+            'font-size: 12px; padding: 6px; margin-top: 8px; '
+            'background: #6c757d; color: white; border-radius: 4px;'
+        )
+        self.resetButton.clicked.connect(lambda: ros_node.send_command('reset'))
+        if hasattr(self, 'leftLayout'):
+            self.leftLayout.addWidget(self.resetButton)
 
         # Microphone toggle — added programmatically into the left panel.
         # GUI buttons remain fully usable while the mic is on.

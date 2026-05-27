@@ -55,8 +55,17 @@ public:
   void setStopRequested(bool v) { stop_requested_ = v; }
   bool stopRequested() const    { return stop_requested_; }
 
+  // Reset-flag: set true by the /brick_command "reset" subscriber. The
+  // main loop services it by calling doReturnHome() (current -> camera_home).
+  void setResetRequested(bool v) { reset_requested_ = v; }
+  bool resetRequested() const    { return reset_requested_; }
+
+  // Minimal MTC task that just moves the arm to the SRDF "camera_home" pose.
+  void doReturnHome();
+
   rclcpp::Node::SharedPtr node_;  // Public so main() can create subscriptions
   std::atomic<bool> stop_requested_{false};
+  std::atomic<bool> reset_requested_{false};
 
 private:
   // Compose an MTC task from a series of stages.
@@ -207,6 +216,52 @@ void MTCTaskNode::doTask()
   }
 
   RCLCPP_INFO(LOGGER, "Task execution succeeded");
+}
+
+void MTCTaskNode::doReturnHome()
+{
+  RCLCPP_INFO(LOGGER, "Reset requested — running return-home task");
+
+  mtc::Task home_task;
+  home_task.stages()->setName("return home only");
+  home_task.loadRobotModel(node_);
+
+  const auto& arm_group_name = "ur_onrobot_manipulator";
+  const auto& hand_group_name = "ur_onrobot_gripper";
+  const auto& hand_frame = "gripper_tcp";
+
+  home_task.setProperty("group", arm_group_name);
+  home_task.setProperty("eef", hand_group_name);
+  home_task.setProperty("ik_frame", hand_frame);
+
+  auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
+
+  home_task.add(std::make_unique<mtc::stages::CurrentState>("current"));
+
+  auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
+  stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+  stage->setGoal("camera_home");
+  stage->setTimeout(15.0);
+  home_task.add(std::move(stage));
+
+  try {
+    home_task.init();
+  } catch (mtc::InitStageException& e) {
+    RCLCPP_ERROR_STREAM(LOGGER, e);
+    return;
+  }
+
+  if (!home_task.plan(5)) {
+    RCLCPP_ERROR(LOGGER, "Return-home planning failed");
+    return;
+  }
+
+  auto result = home_task.execute(*home_task.solutions().front());
+  if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+    RCLCPP_ERROR(LOGGER, "Return-home execution failed");
+    return;
+  }
+  RCLCPP_INFO(LOGGER, "Reset complete — arm at camera_home");
 }
 
 mtc::Task MTCTaskNode::createTask()
@@ -572,6 +627,17 @@ int main(int argc, char** argv)
                             "will resume on next pose data");
               }
               mtc_task_node->setStopRequested(false);
+            } else if (cmd == "reset") {
+              RCLCPP_WARN(LOGGER,
+                          "RESET received — cancelling any active "
+                          "trajectory and queueing return-home task");
+              // Cancel anything currently running so the planning thread
+              // can pick up the reset.
+              mtc_task_node->setStopRequested(true);
+              if (cancel_client->action_server_is_ready()) {
+                cancel_client->async_cancel_all_goals();
+              }
+              mtc_task_node->setResetRequested(true);
             }
             // Other commands (pause / filter:... / gripper_*) are handled
             // elsewhere and ignored here.
@@ -631,8 +697,21 @@ int main(int argc, char** argv)
   RCLCPP_INFO(LOGGER, "Waiting for poses on 'ordered_pose_array'...");
   while (rclcpp::ok()) {
     poses_received = false;  // Reset for each iteration
-    while (rclcpp::ok() && !poses_received) {
+    while (rclcpp::ok() &&
+           !poses_received &&
+           !mtc_task_node->resetRequested()) {
       rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Service a reset request before anything else. doReturnHome() is a
+    // standalone MTC task that just moves the arm to camera_home. We
+    // clear stop_requested so the planning loop inside it isn't
+    // immediately aborted.
+    if (mtc_task_node->resetRequested()) {
+      mtc_task_node->setStopRequested(false);
+      mtc_task_node->doReturnHome();
+      mtc_task_node->setResetRequested(false);
+      continue;
     }
 
     if (!poses_received) {

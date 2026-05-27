@@ -1,0 +1,154 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+    <xacro:include filename="$(find onrobot_description)/urdf/onrobot_macro.xacro"/>
+
+    <xacro:macro name="ur_onrobot" params="
+        parent
+        *origin
+        robot_ip
+        ur_type
+        onrobot_type
+        tf_prefix
+        use_fake_hardware:=false
+        cable_connector:=true
+        joint_limits_parameters_file
+        kinematics_parameters_file
+        physical_parameters_file
+        visual_parameters_file
+        script_filename
+        output_recipe_filename
+        input_recipe_filename
+        ">
+
+        <!-- Create the UR robot-->
+        <xacro:ur_robot
+            robot_ip="${robot_ip}"
+            name="${ur_type}"
+            parent="${parent}"
+            tf_prefix="${tf_prefix}"
+            use_fake_hardware="${use_fake_hardware}"
+            joint_limits_parameters_file="${joint_limits_parameters_file}"
+            kinematics_parameters_file="${kinematics_parameters_file}"
+            physical_parameters_file="${physical_parameters_file}"
+            visual_parameters_file="${visual_parameters_file}"
+            script_filename="${script_filename}"
+            output_recipe_filename="${output_recipe_filename}"
+            input_recipe_filename="${input_recipe_filename}"
+        >
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </xacro:ur_robot>
+
+        <!--Create the OnRobot model -->
+        <xacro:onrobot
+            onrobot_type="${onrobot_type}"
+            prefix="${tf_prefix}"
+            use_fake_hardware="${use_fake_hardware}"
+        />
+
+        <!-- Connect the OnRobot to the UR robot -->
+        <joint name="${tf_prefix}onrobot_base_link_joint" type="fixed">
+            <parent link="${tf_prefix}tool0"/>
+            <child link="${tf_prefix}onrobot_base_link"/>
+            <origin xyz="0 0 0" rpy="0 0 ${-pi/2}"/>
+        </joint>
+
+        <!-- Camera link attached to the end effector -->
+        <link name="${tf_prefix}camera_link">
+            <visual>
+                <geometry>
+                    <box size="0.09 0.025 0.025"/>  <!-- Example: small box for camera body -->
+                </geometry>
+                <origin xyz="0 0 0.0125" rpy="0 0 0"/>
+                <material name="camera_material">
+                    <color rgba="0.5 0.5 0.5 1.0"/>  <!-- Gray color -->
+                </material>
+            </visual>
+            <collision>
+                <geometry>
+                    <box size="0.09 0.025 0.025"/>
+                </geometry>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+            </collision>
+            <inertial>
+                <mass value="0.01"/>  <!-- Light mass -->
+                <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+            </inertial>
+        </link>
+
+        <!-- Joint connecting camera to tool0 -->
+        <joint name="${tf_prefix}camera_joint" type="fixed">
+            <parent link="${tf_prefix}tool0"/>
+            <child link="${tf_prefix}camera_link"/>
+            <!-- Calibrated 2026-05-19 (re-applied after a merge that
+                 wiped the URDF). Original was xyz="0 -0.0869 -0.1065".
+                 Cumulative tool0 deltas:
+                   X: -0.023 (was 0)
+                   Y: -0.1109 (was -0.0869)
+                   Z: -0.0975 (was -0.1065)
+                 Box-centre-vs-top-surface fix in setupPlanningScene
+                 handles the rest of the Z error. -->
+            <origin xyz="-0.023 -0.1109 -0.0975" rpy="0 0 0"/>  <!-- Adjust position/orientation relative to tool0 x: side y: up z: forward -->
+        </joint>
+
+        <!-- Front reference link for the camera (0.025m forward in the camera frame) -->
+        <link name="${tf_prefix}camera_front_link"/>
+        <joint name="${tf_prefix}camera_front_joint" type="fixed">
+            <parent link="${tf_prefix}camera_link"/>
+            <child link="${tf_prefix}camera_front_link"/>
+            <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        </joint>
+
+        <!-- Realsense color frame -->
+        <link name="${tf_prefix}camera_color_frame"/>
+
+        <joint name="${tf_prefix}camera_color_frame_joint" type="fixed">
+            <parent link="${tf_prefix}camera_front_link"/>
+            <child link="${tf_prefix}camera_color_frame"/>
+            <origin xyz="0 0 0" rpy="0 ${-pi/2} ${pi/2}"/>
+        </joint>
+
+        <!-- Realsense optical frame -->
+        <link name="${tf_prefix}camera_color_optical_frame"/>
+
+        <joint name="${tf_prefix}camera_color_optical_joint" type="fixed">
+            <parent link="${tf_prefix}camera_color_frame"/>
+            <child link="${tf_prefix}camera_color_optical_frame"/>
+
+            <!-- ROS optical frame convention -->
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+        </joint>
+
+        <!-- Include cable connector collision links -->
+        <xacro:if value="${cable_connector}">
+            <link name="${tf_prefix}cable_connector_0">
+                <collision>
+                <geometry>
+                    <sphere radius="0.03"/>
+                </geometry>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                </collision>
+            </link>
+            <joint name="${tf_prefix}cable_connector_0_joint" type="fixed">
+                <parent link="${tf_prefix}onrobot_base_link"/>
+                <child link="${tf_prefix}cable_connector_0"/>
+                <origin xyz="0 -0.035 0.01" rpy="0 0 0"/>
+            </joint>
+
+            <link name="${tf_prefix}cable_connector_1">
+                <collision>
+                <geometry>
+                    <sphere radius="0.03"/>
+                </geometry>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                </collision>
+            </link>
+            <joint name="${tf_prefix}cable_connector_1_joint" type="fixed">
+                <parent link="${tf_prefix}onrobot_base_link"/>
+                <child link="${tf_prefix}cable_connector_1"/>
+                <origin xyz="0.03 0.0 -0.03" rpy="0 0 0"/>
+            </joint>
+        </xacro:if>
+    </xacro:macro>
+</robot>

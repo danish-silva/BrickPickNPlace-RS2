@@ -254,10 +254,13 @@ class BrickInteractionNode(Node):
         """
         Receives commands from /brick_command:
             'start' / 'pause' / 'stop'        → state machine
+            'reset'                           → halt cycle, motion node moves
+                                                 the arm back to camera_home
             'gripper_open' / 'gripper_close'  → manual gripper jog (only
                                                  allowed outside RUNNING)
             'filter:nearest' / 'filter:red'   → change pick_filter at runtime
-            'filter:green'
+            'filter:green' / 'filter:regular'
+            'filter:small'
         """
         command = msg.data.strip().lower()
 
@@ -270,6 +273,24 @@ class BrickInteractionNode(Node):
                 )
             except ValueError as e:
                 self.get_logger().warn(str(e))
+            return
+
+        if command == 'reset':
+            # Soft-reset the interaction side. The motion node also subscribes
+            # to /brick_command and handles "reset" by physically moving the
+            # arm back to camera_home — we don't trigger that ourselves.
+            self.get_logger().warn(
+                'Reset received — halting cycle and dropping to IDLE.'
+            )
+            self._waiting_for_scan = False
+            self._cancel_scan_timeout()
+            self._brick_queue = []
+            self._queue_index = 0
+            self._placed_count = 0
+            # Force the state machine back to IDLE regardless of current state.
+            if self._sm.state != SystemState.IDLE:
+                # 'stop' is valid from every non-IDLE state.
+                self._sm.handle_command('stop')
             return
 
         if command in ('gripper_open', 'gripper_close'):
