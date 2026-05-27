@@ -280,9 +280,6 @@ class VoiceInputNode(Node):
             'reset',
             'build tower',
             'build line',
-            'pick red',
-            'pick blue',
-            'pick black'
         ]
 
         self.get_logger().info('Voice Input Node started.')
@@ -338,20 +335,6 @@ class VoiceInputNode(Node):
             'build lion': 'build line',
             'bill line': 'build line',
 
-            # red
-            'red': 'pick red',
-            'pick reds': 'pick red',
-            'select red': 'pick red',
-
-            # blue
-            'blue': 'pick blue',
-            'pick blues': 'pick blue',
-            'select blue': 'pick blue',
-
-            # black
-            'black': 'pick black',
-            'pick blacks': 'pick black',
-            'select black': 'pick black',
         }
 
         if text in alias_map:
