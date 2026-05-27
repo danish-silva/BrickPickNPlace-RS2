@@ -7,6 +7,11 @@
 #include <moveit/task_constructor/stages.h>
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <control_msgs/action/follow_joint_trajectory.hpp>
+#include <algorithm>
+#include <cctype>
 #include <mutex>
 #include <atomic>
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
@@ -45,7 +50,13 @@ public:
     target_pose_ = target_pose;
   }
 
+  // Stop-flag: set true by the /brick_command "stop" subscriber. doTask
+  // checks this between planning attempts and bails out early.
+  void setStopRequested(bool v) { stop_requested_ = v; }
+  bool stopRequested() const    { return stop_requested_; }
+
   rclcpp::Node::SharedPtr node_;  // Public so main() can create subscriptions
+  std::atomic<bool> stop_requested_{false};
 
 private:
   // Compose an MTC task from a series of stages.
@@ -80,27 +91,22 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
-  // dims = { length, width, height }. The published brick.z is the TOP
-  // surface (camera depth reading) but MoveIt centres the box on pose.z,
-  // so subtract half the height to make the box visually align with the
-  // real brick.
-  const double box_x = 0.1, box_y = 0.05, box_z = 0.04;
-  object.primitives[0].dimensions = { box_x, box_y, box_z };
+  object.primitives[0].dimensions = { 0.1, 0.05, 0.04 };
 
   geometry_msgs::msg::Pose pose;
   pose.position.x = brick.x;
   pose.position.y = brick.y;
-  pose.position.z = brick.z - box_z / 2.0;
+  pose.position.z = brick.z;
 
-  // Use the brick's actual orientation from PoseData. Previously this was
-  // hardcoded to identity (w=1.0), causing every brick to spawn aligned with
-  // world X regardless of its real yaw.
+  // Compute the brick's orientation from the published RPY (roll/pitch/yaw
+  // from PoseData) each time. Without this the brick would spawn with its
+  // long axis always along world X regardless of its real yaw.
   tf2::Quaternion brick_q;
   brick_q.setRPY(brick.roll, brick.pitch, brick.yaw);
   pose.orientation = tf2::toMsg(brick_q);
 
   object.pose = pose;
-  object.operation = object.ADD;
+  object.operation = object.ADD;   // <-- this was missing
 
   // ground plane
   moveit_msgs::msg::CollisionObject ground;
@@ -140,6 +146,11 @@ void MTCTaskNode::doTask()
 
   for (int attempt = 1; attempt <= MAX_PLANNING_ATTEMPTS && rclcpp::ok(); ++attempt)
   {
+    if (stop_requested_) {
+      RCLCPP_WARN(LOGGER, "Stop requested — aborting planning after %d attempt(s)",
+                  attempt - 1);
+      return;
+    }
     RCLCPP_INFO(LOGGER, "Planning attempt %d/%d", attempt, MAX_PLANNING_ATTEMPTS);
 
     task_ = createTask();
@@ -177,6 +188,11 @@ void MTCTaskNode::doTask()
   {
     RCLCPP_ERROR(LOGGER, "Failed to find a solution below cost threshold %.2f after %d attempts",
                  PATH_COST_THRESHOLD, MAX_PLANNING_ATTEMPTS);
+    return;
+  }
+
+  if (stop_requested_) {
+    RCLCPP_WARN(LOGGER, "Stop requested — not executing solution");
     return;
   }
 
@@ -302,7 +318,7 @@ mtc::Task MTCTaskNode::createTask()
 
       // Offset the grasp point upward so the gripper doesn't collide with the brick surface
       // Adjust this value based on your gripper finger length
-      grasp_frame_transform.translation() = Eigen::Vector3d(0.0, 0.0, 0.01);
+      grasp_frame_transform.translation() = Eigen::Vector3d(0.0, 0.0, 0.0);
 
       auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
       wrapper->setMaxIKSolutions(16);
@@ -519,6 +535,48 @@ int main(int argc, char** argv)
       mtc_task_node->node_->create_publisher<std_msgs::msg::Empty>(
           "/snapshot_trigger", 10);
 
+  // Action client used to cancel any active trajectory when "stop" arrives.
+  using FJT = control_msgs::action::FollowJointTrajectory;
+  auto cancel_client = rclcpp_action::create_client<FJT>(
+      mtc_task_node->node_,
+      "/scaled_joint_trajectory_controller/follow_joint_trajectory");
+
+  // /brick_command subscriber — flips the stop flag and cancels any
+  // in-flight trajectory so the robot halts mid-motion as well.
+  auto cmd_subscription =
+      mtc_task_node->node_->create_subscription<std_msgs::msg::String>(
+          "/brick_command", 10,
+          [mtc_task_node, cancel_client](const std_msgs::msg::String::SharedPtr msg) {
+            std::string cmd = msg->data;
+            std::transform(cmd.begin(), cmd.end(), cmd.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            cmd.erase(0, cmd.find_first_not_of(" \t\r\n"));
+            cmd.erase(cmd.find_last_not_of(" \t\r\n") + 1);
+
+            if (cmd == "stop") {
+              if (!mtc_task_node->stopRequested()) {
+                RCLCPP_WARN(LOGGER,
+                            "STOP received — halting cycle and cancelling "
+                            "any active trajectory");
+              }
+              mtc_task_node->setStopRequested(true);
+              // Hard stop: cancel whatever the trajectory controller is
+              // executing right now. Fires-and-forgets.
+              if (cancel_client->action_server_is_ready()) {
+                cancel_client->async_cancel_all_goals();
+              }
+            } else if (cmd == "start") {
+              if (mtc_task_node->stopRequested()) {
+                RCLCPP_INFO(LOGGER,
+                            "START received — clearing stop flag, cycle "
+                            "will resume on next pose data");
+              }
+              mtc_task_node->setStopRequested(false);
+            }
+            // Other commands (pause / filter:... / gripper_*) are handled
+            // elsewhere and ignored here.
+          });
+
   auto pose_subscription = mtc_task_node->node_->create_subscription<std_msgs::msg::Float64MultiArray>(
       "ordered_pose_array",
       10,
@@ -582,10 +640,26 @@ int main(int argc, char** argv)
       break;
     }
 
+    // A stop could have arrived while we were waiting. Discard the pose
+    // data and keep idling — the next "start" + fresh pose array re-runs.
+    if (mtc_task_node->stopRequested()) {
+      RCLCPP_WARN(LOGGER, "Pose data received but stop is active — discarding");
+      continue;
+    }
+
     RCLCPP_INFO(LOGGER, "Received pose data, setting up scene and executing task");
     mtc_task_node->setPoseData(brick_pose, target_pose);
     mtc_task_node->setupPlanningScene();
     mtc_task_node->doTask();
+
+    // doTask early-returns when stop arrives mid-planning/exec. In that
+    // case we also skip the snapshot trigger so the cycle doesn't restart.
+    if (mtc_task_node->stopRequested()) {
+      RCLCPP_WARN(LOGGER,
+                  "Cycle halted by stop — NOT publishing /snapshot_trigger");
+      continue;
+    }
+
     RCLCPP_INFO(LOGGER, "Task completed — publishing /snapshot_trigger to start next cycle");
     snapshot_trigger_pub->publish(std_msgs::msg::Empty());
   }

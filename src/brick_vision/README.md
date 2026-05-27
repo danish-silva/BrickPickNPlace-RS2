@@ -8,8 +8,8 @@ ROS 2 package for detecting LEGO bricks and analysing a build plate using an **I
 
 For each captured frame the pipeline runs three stages:
 
-1. **Brick detection** — find 4×2 LEGO bricks in the workspace ROI, identify their colour, compute centre + yaw in 3D camera coordinates.
-2. **Build-zone analysis** — locate the 14-row × 12-column stud grid on the build plate, decide which studs are free vs occupied, slide a 4×2 window over the grid to find legal placement slots (with a 1-stud gap rule).
+1. **Brick detection** — find supported LEGO brick variants in the workspace ROI, identify each one's **colour** and **size variant** (`regular` = 4×2/100×50 mm, `small` = 3×2/75×50 mm), compute centre + yaw in 3D camera coordinates.
+2. **Build-zone analysis** — locate the 14-row × 12-column stud grid on the build plate, decide which studs are free vs occupied, slide a 4×2 window over the grid to find legal placement slots (with a 1-stud gap rule). *Note: build-zone slot search currently considers 4×2 footprints only.*
 3. **Publish results** — bricks, free studs, and available slots are all published on dedicated topics for the interaction node to consume.
 
 ```
@@ -64,7 +64,7 @@ All published under the node namespace `/brick_detector/`. In `on_trigger` mode 
 | Topic | Type | Purpose |
 |---|---|---|
 | `~/detection_image` | `sensor_msgs/Image` | Annotated camera frame: brick boxes + colour labels, build-zone perimeter, free studs (green dots), occupied studs (red X), available 4×2 slots (cyan rectangles), status line. Not latched. |
-| `~/detections` | `vision_msgs/Detection3DArray` | **All** detected bricks (pickup + placed). Useful for rviz / debugging. One entry per brick, binding `pose + size + colour + confidence`. Pose orientation encodes yaw as a quaternion (roll/pitch = 0). Colour string is in `results[0].hypothesis.class_id`. |
+| `~/detections` | `vision_msgs/Detection3DArray` | **All** detected bricks (pickup + placed). Useful for rviz / debugging. One entry per brick, binding `pose + size + colour + confidence`. Pose orientation encodes yaw as a quaternion (roll/pitch = 0). Colour string is in `results[0].hypothesis.class_id`. **Size variant (`regular` / `small`) is in `Detection3D.id`** (visible as an extra `id: ...` line when echoing). |
 | `~/pickup_detections` | `vision_msgs/Detection3DArray` | **Main consumer topic for the interaction node.** Only bricks whose pixel centre falls *outside* the calibrated build-zone rectangle — i.e. bricks waiting to be picked. Same message structure as `~/detections`. If the build zone isn't calibrated, this is identical to `~/detections`. |
 | `~/placed_detections` | `vision_msgs/Detection3DArray` | Bricks already on the build plate (pixel centre inside the build-zone rectangle, ½-stud margin). Diagnostic only — the interaction node should ignore these. |
 | `~/brick_pose` | `geometry_msgs/PoseStamped` | Convenience — first **pickup-side** brick only. Use `~/pickup_detections` for real consumption. |
@@ -82,10 +82,34 @@ All headers stamp `frame_id = "camera_color_optical_frame"` — consumers should
 1. **Capture** — RealSense streams aligned colour + depth at 640×480 @ 30 fps.
 2. **Workspace ROI** — Crop to the calibrated rectangle (border pixels excluded).
 3. **HSV pre-segmentation** — Build colour masks for the supported colour set.
-4. **Contour extraction + size check** — Keep contours whose oriented bounding box has the right aspect ratio (2:1 ± 35 %) and metric size (~100×50 mm ± 30 %).
+4. **Contour extraction + variant matching** — Every contour's oriented bounding box is tested against each entry in `BRICK_VARIANTS` (currently `regular` and `small`). A contour passes if **at least one variant** matches its aspect ratio (±20 %) and metric size (±25 %). The variant with the smallest combined aspect + size error wins, and its `name` is tagged onto the candidate.
 5. **Stud verification (HoughCircles)** — Inside each candidate, find circular studs and check there are roughly 8 of them at the expected spacing.
 6. **Pose + yaw** — Centre from contour moments, yaw from the oriented box, Z from median depth in a small window.
 7. **Confidence** — `0.65 max` from colour+size, plus `0.35 bonus` if ≥ 2 verified studs were found (total ≤ 1.0).
+
+### Supported brick variants
+
+Each detection is matched against this table; whichever entry passes the aspect + size tolerances with the lowest combined error wins. The variant's `name` is published on the `Detection3D.id` field (visible as an extra `id: …` line in `ros2 topic echo /pickup_bricks`).
+
+| Variant | Studs | Footprint | Aspect | Published `id` |
+|---|---|---|---|---|
+| Regular | 4 × 2 | 100 × 50 mm | 2.0 | `regular` |
+| Small   | 3 × 2 |  75 × 50 mm | 1.5 | `small` |
+
+To add another brick size (e.g. 6×2) append a new dict to `BRICK_VARIANTS` near the top of `brick_detector.py`:
+
+```python
+{
+    "name":           "long",
+    "length_m":       0.150,         # 6 × 25 mm
+    "width_m":        0.050,
+    "studs_long":     6,
+    "studs_short":    2,
+    "expected_studs": 12,
+},
+```
+
+Nothing else needs editing.
 
 ### Supported colours
 
@@ -113,8 +137,8 @@ White is intentionally excluded — the workspace surface is white.
     "colour":       "orange",
     "colour_bgr":   (0, 140, 255),
     "stud_count":   8,
-    "brick_config": (4, 2),
     "confidence":   0.92,
+    "size":         "regular",            # "regular" (4x2) or "small" (3x2)
 }
 ```
 
@@ -388,6 +412,7 @@ brick_vision/
 │   ├── __init__.py
 │   ├── brick_detector.py                # main detector + ROS node
 │   ├── brick_detector_no_buildzone.py   # backup: state before build-zone work
+│   ├── brick_detector_4x2only.py        # backup: pre-multi-variant (only 4x2)
 │   └── brick_detector_dimension_based.py  # legacy contour-only detector
 ├── config/
 │   └── workspace_calibration.json       # legacy fallback (canonical is ~/.brick_vision/)

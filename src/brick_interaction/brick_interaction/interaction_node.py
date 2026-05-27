@@ -34,6 +34,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
+from rcl_interfaces.msg import SetParametersResult
 from std_msgs.msg import Empty, String
 from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from vision_msgs.msg import Detection3DArray
@@ -90,6 +91,16 @@ MAX_BRICKS_PER_RUN = 100
 ELIGIBLE_COLOURS: list[str] = []
 ELIGIBLE_SIZES: list[str] = []
 MIN_DETECTION_CONFIDENCE = 0.30
+
+# Valid values for the `pick_filter` ROS parameter.
+#   "nearest" — closest eligible brick (any colour / any size)  [legacy default]
+#   "red"     — only red bricks (still tie-broken by distance)
+#   "green"   — only green bricks (still tie-broken by distance)
+#   "regular" — only 4x2 / "regular" bricks (tie-broken by distance)
+#   "small"   — only 3x2 / "small"   bricks (tie-broken by distance)
+PICK_FILTER_MODES = ("nearest", "red", "green", "regular", "small")
+COLOUR_FILTER_MODES = ("red", "green")
+SIZE_FILTER_MODES   = ("regular", "small")
 
 # ===========================================================================
 # PHASE ENUM — the 8-step sequence for each brick
@@ -153,6 +164,16 @@ class BrickInteractionNode(Node):
 
     def __init__(self) -> None:
         super().__init__('brick_interaction')
+
+        # --- Pick-filter parameter ----------------------------------------
+        # Selects how the next brick is chosen each cycle. Settable at
+        # runtime with:
+        #     ros2 param set /brick_interaction pick_filter red
+        self.declare_parameter('pick_filter', 'nearest')
+        self._pick_filter = self._validate_pick_filter(
+            str(self.get_parameter('pick_filter').value)
+        )
+        self.add_on_set_parameters_callback(self._on_parameter_change)
 
         # Latched QoS: new subscribers immediately receive the last published value.
         latched_qos = QoSProfile(
@@ -220,7 +241,10 @@ class BrickInteractionNode(Node):
         # Publish initial status so the GUI shows "idle" on startup
         self._publish_status(SystemState.IDLE)
 
-        self.get_logger().info('BrickInteractionNode ready — waiting for commands.')
+        self.get_logger().info(
+            f"BrickInteractionNode ready — pick_filter='{self._pick_filter}', "
+            'waiting for commands.'
+        )
 
     # ------------------------------------------------------------------ #
     # Subscriber callbacks                                                 #
@@ -229,11 +253,24 @@ class BrickInteractionNode(Node):
     def _command_callback(self, msg: String) -> None:
         """
         Receives commands from /brick_command:
-            'start' / 'pause' / 'stop'   → state machine
-            'gripper_open' / 'gripper_close' → manual gripper jog (only
-            allowed outside RUNNING so the cycle isn't disrupted).
+            'start' / 'pause' / 'stop'        → state machine
+            'gripper_open' / 'gripper_close'  → manual gripper jog (only
+                                                 allowed outside RUNNING)
+            'filter:nearest' / 'filter:red'   → change pick_filter at runtime
+            'filter:green'
         """
         command = msg.data.strip().lower()
+
+        if command.startswith('filter:'):
+            new_filter = command.split(':', 1)[1].strip()
+            try:
+                self._pick_filter = self._validate_pick_filter(new_filter)
+                self.get_logger().info(
+                    f"pick_filter set to '{self._pick_filter}' via /brick_command"
+                )
+            except ValueError as e:
+                self.get_logger().warn(str(e))
+            return
 
         if command in ('gripper_open', 'gripper_close'):
             self._handle_manual_gripper(command)
@@ -297,6 +334,31 @@ class BrickInteractionNode(Node):
             f'pos=({brick.x:.3f}, {brick.y:.3f}, {brick.z:.3f}) '
             f'theta={math.degrees(brick.theta):.1f} deg'
         )
+
+    # ------------------------------------------------------------------ #
+    # Pick-filter parameter                                                #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _validate_pick_filter(value: str) -> str:
+        v = (value or '').strip().lower()
+        if v not in PICK_FILTER_MODES:
+            raise ValueError(
+                f"pick_filter must be one of {PICK_FILTER_MODES} (got '{value}')"
+            )
+        return v
+
+    def _on_parameter_change(self, params) -> SetParametersResult:
+        """Validate and apply runtime parameter changes (e.g. pick_filter)."""
+        for p in params:
+            if p.name == 'pick_filter':
+                try:
+                    new_val = self._validate_pick_filter(str(p.value))
+                except ValueError as e:
+                    return SetParametersResult(successful=False, reason=str(e))
+                self._pick_filter = new_val
+                self.get_logger().info(f"pick_filter set to '{new_val}'")
+        return SetParametersResult(successful=True)
 
     # ------------------------------------------------------------------ #
     # Pick-and-place cycle                                                 #
@@ -498,18 +560,33 @@ class BrickInteractionNode(Node):
         allow_slot_fallback: bool = True,
     ) -> None:
         """Select one brick and one open slot, then publish the MTC contract."""
+        # Resolve the (colour, size) allow-lists from the runtime pick_filter:
+        #   nearest          → any colour, any size
+        #   red / green      → that colour, any size
+        #   regular / small  → any colour, that size
+        if self._pick_filter in COLOUR_FILTER_MODES:
+            allowed_colours = [self._pick_filter]
+            allowed_sizes   = ELIGIBLE_SIZES
+        elif self._pick_filter in SIZE_FILTER_MODES:
+            allowed_colours = ELIGIBLE_COLOURS
+            allowed_sizes   = [self._pick_filter]
+        else:  # 'nearest' or anything unknown that slipped past validation
+            allowed_colours = ELIGIBLE_COLOURS
+            allowed_sizes   = ELIGIBLE_SIZES
+
         brick = choose_nearest_eligible_brick(
             bricks,
             ROBOT_BASE,
-            allowed_colours=ELIGIBLE_COLOURS,
-            allowed_sizes=ELIGIBLE_SIZES,
+            allowed_colours=allowed_colours,
+            allowed_sizes=allowed_sizes,
             min_confidence=MIN_DETECTION_CONFIDENCE,
         )
         if brick is None:
             self.get_logger().error(
                 'No brick met the configured criteria: '
-                f'colours={ELIGIBLE_COLOURS or "any"}, '
-                f'sizes={ELIGIBLE_SIZES or "any"}, '
+                f'pick_filter={self._pick_filter}, '
+                f'colours={allowed_colours or "any"}, '
+                f'sizes={allowed_sizes or "any"}, '
                 f'min_confidence={MIN_DETECTION_CONFIDENCE:.2f}'
             )
             self._sm.set_error()

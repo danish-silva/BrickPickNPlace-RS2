@@ -75,7 +75,7 @@
 #     main()
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 import re
 
 
@@ -96,10 +96,32 @@ class CommandParserNode(Node):
         self.build_pub = self.create_publisher(String, '/build_request', 10)
         self.sequence_pub = self.create_publisher(String, '/block_sequence', 10)
 
-        self.get_logger().info('Command Parser Node started.')
+        # Gate: GUI publishes /voice_enabled (Bool). When False, the mic
+        # keeps listening but parsed commands are NOT forwarded onward.
+        # Defaults to False — matches the GUI's startup state.
+        self._voice_enabled = False
+        self.create_subscription(
+            Bool, '/voice_enabled', self._on_voice_enabled, 10
+        )
+
+        self.get_logger().info(
+            'Command Parser Node started (voice disabled until GUI toggle).'
+        )
+
+    def _on_voice_enabled(self, msg: Bool) -> None:
+        if msg.data != self._voice_enabled:
+            self._voice_enabled = msg.data
+            self.get_logger().info(
+                f"Voice {'ENABLED' if msg.data else 'disabled'} via /voice_enabled."
+            )
 
     def command_callback(self, msg):
         raw = msg.data.lower().strip()
+        if not self._voice_enabled:
+            self.get_logger().debug(
+                f'Ignoring voice command "{raw}" — gate is off.'
+            )
+            return
         self.get_logger().info(f'Received raw command: "{raw}"')
 
         # -------- System commands --------

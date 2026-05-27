@@ -9,11 +9,13 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(vision_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(shape_msgs REQUIRED)
+find_package(control_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 # uncomment the following section in order to fill in
@@ -21,7 +23,7 @@ find_package(tf2_eigen REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 add_executable(ur3e_motion_mtc src/ur3e_motion_mtc.cpp)
-ament_target_dependencies(ur3e_motion_mtc moveit_task_constructor_core rclcpp std_msgs vision_msgs geometry_msgs moveit_msgs shape_msgs tf2_geometry_msgs tf2_eigen)
+ament_target_dependencies(ur3e_motion_mtc moveit_task_constructor_core rclcpp rclcpp_action std_msgs vision_msgs geometry_msgs moveit_msgs shape_msgs control_msgs tf2_geometry_msgs tf2_eigen)
 target_include_directories(ur3e_motion_mtc PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include>)
