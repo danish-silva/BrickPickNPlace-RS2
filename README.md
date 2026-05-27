@@ -25,25 +25,27 @@ LeBrick n' Place is a ROS2-based vision-guided pick-and-place system that uses t
 |-----------|---------|------|-------------|
 | Perception & Mapping | `brick_vision` | Danish Silva | Brick detection, colour/size classification, and 3D pose estimation via RealSense + OpenCV |
 | Motion Planning & Control | `ur3e_motion_mtc` | Benjamin Costarella | Performs Inverse Kinematics, trajectory planning, singularity & obstacle avoidance using MoveIt2 to plan and execute pick-and-place tasks |
-| Interaction & Execution | `brick_interaction` & `brick_gui` | Hari Mahadevan | Task sequencing, state management, GUI coordination, and error recovery |
+| Interaction & Execution | `brick_interaction` & `brick_gui` | Hari Mahadevan | Task sequencing & state machine (idle / running / paused / stopped / completed / error); Qt-based GUI with mode selection (closest large / small / red / green), start–pause–stop–reset controls, voice toggle, and live status; camera→base_link frame transform bridge feeding the motion subsystem; coordination of pick/place hand-offs and snapshot cycle triggering |
 | Voice Interface | Task Level Control via Voice Interface| Dheeraj Panjwani | Voice commands via microphone for system control and task selection |
 
 ### System Architecture
 
 ```
-+---------------------+       +-------------------------+       +---------------------+
-|   Perception &      | ----> |   Interaction &         | ----> |   Motion Planning   |
-|   Mapping           |       |   Execution             |       |   & Control         |
-|   (brick_vision)    |       |   (brick_interaction)   |       |   (ur3e_motion)     |
-+---------------------+       +-------------------------+       +---------------------+
-   Intel RealSense               GUI + Task Sequencing             UR3e + MoveIt2
-   OpenCV + Depth                 Behaviour Tree                  Task Constructor
-                                         ^
-                                         |
-                               +---------------------+
-                               |   Voice Interface   |
-                               | (Microphone + ROS2) |
-                               +---------------------+
++---------------------+   +--------------------+   +-------------------------+   +---------------------+
+|   Perception &      |-->| frame_transform_   |-->|   Interaction &         |-->|   Motion Planning   |
+|   Mapping           |   |   node             |   |   Execution             |   |   & Control         |
+|   (brick_vision)    |   | (camera->base_link |   |   (brick_interaction    |   |   (ur3e_motion_mtc) |
++---------------------+   |  via tf2)          |   |    + brick_gui)         |   +---------------------+
+   Intel RealSense        +--------------------+   |   state machine,        |       UR3e + MoveIt2
+   OpenCV + Depth                                  |   GUI, pick filters,    |       Task Constructor
+                                                   |   stop / reset path     |       (snapshot trigger
+                                                   +-------------------------+        publishes back
+                                                                  ^                  to perception)
+                                                                  |
+                                                        +---------------------+
+                                                        |   Voice Interface   |
+                                                        | (Microphone + ROS2) |
+                                                        +---------------------+
 ```
 
 
@@ -162,85 +164,75 @@ source install/setup.bash
 
 ## Launch Commands
 
-**Terminal 1 — UR driver (connect to physical robot):**
+The application stack (vision + frame-transform bridge + motion planning + interaction + GUI) is bundled into a single launch file, so only **five terminals** are needed in total — three for the system and two more for optional voice control.
+
+### Terminal 1 — UR driver (real robot)
+
+Connects to the physical UR3e at `192.168.0.194`. After this launches, load `external_control.urp` on the pendant and press ▶ Play; you should see *"Robot connected to reverse interface."* in this terminal.
+
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 launch ur_onrobot_control start_robot.launch.py \
   ur_type:=ur3e \
   onrobot_type:=rg2 \
-  robot_ip:=0.0.0.0 \
+  robot_ip:=192.168.0.194 \
   launch_rviz:=false
 ```
 
-**Terminal 1 — UR driver (connect to Fake Hardware):**
+For sim testing without the physical robot:
+
+```bash
+ros2 launch ur_onrobot_control start_robot.launch.py \
+  ur_type:=ur3e \
+  onrobot_type:=rg2 \
+  use_fake_hardware:=true \
+  launch_rviz:=false
+```
+
+### Terminal 2 — MoveIt + RViz
+
+Wait until Terminal 1 reports active controllers (`scaled_joint_trajectory_controller`, `finger_width_trajectory_controller`).
+
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
-ros2 launch ur_onrobot_control start_robot.launch.py ur_type:=ur3e onrobot_type:=rg2 use_fake_hardware:=true launch_rviz:=false
+ros2 launch ur_onrobot_moveit_config ur_onrobot_moveit.launch.py \
+  ur_type:=ur3e \
+  onrobot_type:=rg2 \
+  launch_rviz:=true
 ```
 
-**Terminal 2 — MoveIt + RViz:**
+### Terminal 3 — Application stack (bundled)
+
+Brings up `brick_vision`, `frame_transform_node` (camera → base_link tf2 bridge), `ur3e_motion_mtc`, `brick_interaction_node`, and the GUI in dependency order with timed delays (~30 s to fully come up).
+
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
-ros2 launch ur_onrobot_moveit_config ur_onrobot_moveit.launch.py ur_type:=ur3e onrobot_type:=rg2 launch_rviz:=true
+ros2 launch brick_interaction system.launch.py
 ```
 
-**Terminal 3 — Brick Detection:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run brick_vision brick_detector
-```
+When the GUI window appears, pick a pick mode (closest large / small / red / green), then use **Start / Pause / Stop / Reset → camera_home** to drive the cycle. The microphone toggle gates the voice path described below.
 
-**Terminal 4 — Motion Planning and Control:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 launch ur3e_motion_mtc ur3e_motion_mtc.launch.py
-```
+### Terminal 4 — Voice Input Node (optional)
 
-**Terminal 5 — Brick Interaction:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run brick_interaction brick_interaction_node
-```
+Captures microphone audio and publishes raw transcripts on `/voice_command_raw`. The microphone keeps listening continuously — the GUI's "Use microphone" checkbox gates whether commands are forwarded.
 
-**Terminal 6 — Voice Interface: Voice Input Node:**
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface voice_input_node
 ```
 
-**Terminal 7 — Voice Interface: Command Parser Node:**
+### Terminal 5 — Voice Command Parser Node (optional)
+
+Parses transcripts into system commands (`start`, `pause`, `stop`, `reset`, `home`, colour/brick-size keywords) and publishes them on `/brick_command`. Subscribes to `/voice_enabled` (published by the GUI checkbox) and silently drops parsed commands when the mic is gated off.
+
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run voice_interface command_parser_node
-```
-
-**Terminal 8 — Voice Interface: System Command Listener:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run voice_interface system_command_listener
-```
-
-**Terminal 9 — Voice Interface: Reset Executor Node:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run voice_interface reset_executor_node
-```
-
-**Terminal 10 — GUI:**
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run brick_gui brick_gui_node
 ```
 
 ---
@@ -249,7 +241,7 @@ ros2 run brick_gui brick_gui_node
 
 ### Demonstration Video
 
-[![Watch the LeBrick n' Place demonstration](https://img.youtube.com/vi/YMXdymKKalc/maxresdefault.jpg)](https://youtube.com/shorts/HnnYeVQIz8Y?feature=share)
+[![Watch the LeBrick n' Place demonstration](https://img.youtube.com/vi/HnnYeVQIz8Y/maxresdefault.jpg)](https://youtube.com/shorts/HnnYeVQIz8Y)
 
 ### GUI Screen
 
