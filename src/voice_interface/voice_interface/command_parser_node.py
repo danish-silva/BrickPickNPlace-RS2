@@ -128,17 +128,6 @@ class CommandParserNode(Node):
             self.publish_msg(self.build_pub, 'BUILD_LINE')
             return
 
-        # -------- Colour selection --------
-        colour_map = {
-            'pick red': 'COLOUR_RED',
-            'pick blue': 'COLOUR_BLUE',
-            'pick black': 'COLOUR_BLACK',
-        }
-
-        if raw in colour_map:
-            self.publish_msg(self.build_pub, colour_map[raw])
-            return
-
         # -------- Custom sequence --------
         if raw.startswith('sequence'):
             nums = re.findall(r'\d+', raw)
