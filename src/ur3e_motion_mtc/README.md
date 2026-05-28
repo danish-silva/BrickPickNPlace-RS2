@@ -90,17 +90,18 @@ On receiving valid pose data the node executes this sequence on the UR3e:
 
 ```
 1.  Open gripper
-2.  Move arm to above-brick position        (sampling planner)
-3.  Descend toward brick                    (Cartesian planner, downward -Z)
-4.  Close gripper around brick
-5.  Attach brick to gripper in scene
-6.  Lift brick upward                       (Cartesian planner, upward +Z)
-7.  Move arm to above-target position       (sampling planner)
-8.  Lower to place position                 (Cartesian planner)
-9.  Open gripper
-10. Detach brick from gripper in scene
-11. Retreat upward                          (Cartesian planner, upward +Z)
-12. Return arm to camera_home configuration (sampling planner)
+2.  Move arm to `camera_home`               (sampling planner)
+3.  Move arm to above-brick position        (sampling planner, Connect stage)
+4.  Descend toward brick                    (Cartesian planner, downward -Z)
+5.  Close gripper around brick
+6.  Attach brick to gripper in scene
+7.  Lift brick upward                       (Cartesian planner, upward +Z)
+8.  Move arm to above-target position       (sampling planner, Connect stage)
+9.  Lower to place position                 (Cartesian planner, downward -Z)
+10. Open gripper
+11. Detach brick from gripper in scene
+12. Retreat upward                          (Cartesian planner, upward +Z)
+13. Return arm to `camera_home`             (sampling planner)
 ```
 
 ---
@@ -199,22 +200,34 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 
 | Parameter | Location in code | Default | Description |
 |---|---|---|---|
-| Approach min/max distance | `approach object` stage | `0.0 / 0.20 m` | Vertical descent range before grasping |
-| Lift min/max distance | `lift object` stage | `0.0 / 0.20 m` | Vertical lift range after grasping |
-| Retreat min/max distance | `retreat` stage | `0.0 / 0.20 m` | Vertical retreat range after placing |
-| `move to pick` timeout | `stage_move_to_pick` | `15.0 s` | Max planning time to reach above the brick |
-| `move to place` timeout | `stage_move_to_place` | `15.0 s` | Max planning time to reach above the place position |
+| **Planning Control** | | | |
+| `PATH_COST_THRESHOLD` | `doTask()` | `30.0` | Maximum allowed path cost; planning retries if above this threshold |
+| `MAX_PLANNING_ATTEMPTS` | `doTask()` | `20` | Number of full-task planning attempts before giving up |
+| **Cartesian Motion Ranges** | | | |
+| Approach min/max distance | `approach object` stage | `0.03 / 0.10 m` | Vertical descent range before grasping |
+| Lift min/max distance | `lift object` stage | `0.03 / 0.10 m` | Vertical lift range after grasping |
+| Retreat min/max distance | `retreat` stage | `0.03 / 0.10 m` | Vertical retreat range after placing |
+| **Stage Timeouts** | | | |
+| `move to pick` timeout | `stage_move_to_pick` | `5.0 s` | Max planning time to reach above the brick |
+| `move to place` timeout | `stage_move_to_place` | `5.0 s` | Max planning time to reach above the place position |
+| **Inverse Kinematics** | | | |
 | Max IK solutions (grasp) | `ComputeIK` grasp wrapper | `16` | IK solutions explored for grasp pose |
-| Max IK solutions (place) | `ComputeIK` place wrapper | `8` | IK solutions explored for place pose |
-| `task_.plan()` count | `doTask()` | `10` | Number of full task solutions to find before executing |
-| Velocity scaling | `cartesian_planner` | `0.5` | Fraction of max joint velocity for Cartesian stages |
-| Acceleration scaling | `cartesian_planner` | `0.5` | Fraction of max joint acceleration for Cartesian stages |
+| Min solution distance (grasp) | `ComputeIK` grasp wrapper | `0.5` | Min distance (rad) between consecutive grasp IK solutions |
+| Max IK solutions (place) | `ComputeIK` place wrapper | `16` | IK solutions explored for place pose |
+| Min solution distance (place) | `ComputeIK` place wrapper | `1.0` | Min distance (rad) between consecutive place IK solutions |
+| **Velocity & Acceleration** | | | |
+| Velocity scaling (sampling) | `sampling_planner` | `0.2` | Fraction of max joint velocity for sampling planner |
+| Velocity scaling (Cartesian) | `cartesian_planner` | `0.2` | Fraction of max joint velocity for Cartesian stages |
+| Acceleration scaling (sampling) | `sampling_planner` | `0.2` | Fraction of max joint acceleration for sampling planner |
+| Acceleration scaling (Cartesian) | `cartesian_planner` | `0.2` | Fraction of max joint acceleration for Cartesian stages |
+| Cartesian step size | `cartesian_planner` | `0.002 m` | Step size for discretised Cartesian planning |
+| Cartesian jump threshold | `cartesian_planner` | `1.5` | Max allowed joint angle jump between Cartesian waypoints (rad) |
 
 ---
 
 ## Known Limitations and Assumptions
 
-**Assumptions:**
+### Assumptions
 
 - The pose data received from `ordered_pose_array` is in the `world` frame of reference. 
 - The pose data received from `ordered_pose_array` is an array of 12 float values representing the brick's pose and target pose, 6 vales for each. 
@@ -222,10 +235,9 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 - Two brick's will be distances far enough appart that the gripper can pick and place each brick using the brick's long axis.
 - All required controllers have been actived before launching the `motion_node`.
 
-
-**Known Limitations:**
+### Known Limitations
 
 - If planning fails, the node logs an error and exits. It does not retry automatically with different parameters.
-- The workspace does not model the evironment of the actually UR3e. There is no placement board or other bricks, so the robot doesn't avoid collision with the environment yet.
-- Currently, the Cartesian movements only work if the minimum is set to 0m, so they dont retreat or approach the bricks.
+- The workspace does not model the evironment of the actually UR3e. There is no placement board or other bricks, so the robot doesn't avoid collision with the environment yet. However, the approach and retreat cartesain movements around collisions with already placed bricks.
+- The system cannot avoid dynamic obstacles within the environment.
 

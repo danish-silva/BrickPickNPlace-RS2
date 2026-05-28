@@ -1346,45 +1346,18 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 
 ### Assumptions
 
-- `ordered_pose_array` must contain exactly 12 float64 values: `[brick_x, brick_y, brick_z, brick_roll, brick_pitch, brick_yaw, target_x, target_y, target_z, target_roll, target_pitch, target_yaw]`
-- All poses are assumed to be in the `world` frame.
-- The node handles one pick/place task at a time and only starts the next task after returning to `camera_home`.
-- `camera_home`, `open`, and `closed` pose names must exist in the robot's SRDF configuration and MoveIt setup.
-- All required trajectory controllers (`scaled_joint_trajectory_controller`, `finger_width_trajectory_controller`) must be active before launching the node.
-- The arm can always move between `camera_home` and any arbitrary brick/target pose without leaving the workspace.
+- The pose data received from `ordered_pose_array` is in the `world` frame of reference. 
+- The pose data received from `ordered_pose_array` is an array of 12 float values representing the brick's pose and target pose, 6 vales for each. 
+- The node will only receive a single pick-and-place task per motion, and will only receive a new one once returning to the `camera_home` robot configuration.
+- Two brick's will be distances far enough appart that the gripper can pick and place each brick using the brick's long axis.
+- All required controllers have been actived before launching the `motion_node`.
 
-### Current Limitations
+### Known Limitations
 
-**Planning and Execution:**
-- Single-shot planning: `task_.plan(1)` finds only one solution per attempt. No fallback solution selection or retries with modified pose offsets.
-- If planning fails or cost exceeds the threshold, the node logs an error and stops. No higher-level retry strategy or automated recovery.
-- Cost-based filtering: solutions are rejected if path cost exceeds `PATH_COST_THRESHOLD` (30.0), but the threshold is not tuned for the specific environment.
+- If planning fails, the node logs an error and exits. It does not retry automatically with different parameters.
+- The workspace does not model the evironment of the actually UR3e. There is no placement board or other bricks, so the robot doesn't avoid collision with the environment yet. However, the approach and retreat cartesain movements around collisions with already placed bricks.
+- The system cannot avoid dynamic obstacles within the environment.
 
-**Collision Modeling:**
-- Minimal scene: only a ground plane + the single picked brick are modeled as collision objects.
-- No static environment obstacles (table edge, board perimeter, other bricks) are added to the planning scene.
-- No dynamic obstacle avoidance; moving objects in the workspace are not detected or modeled.
-- The `Cartesian` motions and controlled gripper width help avoid collisions in practice, but there is no explicit collision-free planning guarantee.
-
-**Grasp and Place Behavior:**
-- `GenerateGraspPose` is constrained to top-down grasps with only two yaw options (0° and 180°), limiting adaptability to unusual brick poses.
-- Place pose is fixed to the target pose from the input message with no adaptive offset or approach direction tuning.
-- Gripper orientation is hardcoded as a 180° rotation around the X-axis (top-down gripper approach).
-
-**Motion Control:**
-- Approach/lift/retreat Cartesian distances are hardcoded per stage and not parameterized at runtime.
-- Velocity and acceleration scaling are uniform across all planners (0.2 max) and cannot be adjusted per stage.
-- Stop/reset handling is coarse: `stop` cancels trajectory goals immediately but does not gracefully pause or rewind task execution state.
-
-**Message Handling:**
-- Incoming `Float64MultiArray` messages must have exactly 12 values; messages of any other size are silently ignored.
-- The main loop waits indefinitely for valid pose data, potentially blocking if no messages arrive.
-- No validation of pose values (e.g., unreachable targets or negative Z) before attempting planning.
-
-**Integration:**
-- No feedback or action-based completion confirmation; the node assumes motion completes after the configured timeout.
-- The interaction node must provide pose data; there is no internal fallback or mock pose generation.
-- Frame-of-reference assumptions: assumes `world` frame ≡ `base_link` (no runtime transform verification).
 
 ---
 
