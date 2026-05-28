@@ -57,16 +57,62 @@ LeBrick n' Place is a ROS2-based vision-guided pick-and-place system that uses t
 BrickPickNPlace-RS2/
 ├── src/
 │   ├── brick_vision/          # Perception & mapping (RealSense + OpenCV)
+│   │   ├── CMakeLists.txt
+│   │   ├── README.md
+│   │   ├── package.xml
+│   │   ├── launch/
+│   │   │   └── brick_detection.launch.py
+│   │   ├── config/
+│   │   │   └── workspace_calibration.json
+│   │   └── brick_vision/
+│   │       ├── __init__.py
+│   │       └── brick_detector.py
 │   ├── brick_gui/             # User interface
+│   │   ├── CMakeLists.txt
+│   │   ├── README.md
+│   │   ├── package.xml
+│   │   ├── launch/
+│   │   │   └── brick_gui.launch.py
+│   │   ├── resource/
+│   │   └── brick_gui/
+│   │       ├── __init__.py
+│   │       ├── gui_node.py
+│   │       └── ui/
+│   │           └── main_window.ui
 │   ├── brick_interaction/     # Task sequencing & execution logic
+│   │   ├── CMakeLists.txt
+│   │   ├── README.md
+│   │   ├── package.xml
+│   │   ├── launch/
+│   │   │   ├── brick_interaction.launch.py
+│   │   │   └── system.launch.py
+│   │   ├── resource/
+│   │   └── brick_interaction/
+│   │       ├── __init__.py
+│   │       ├── brick_sorter.py
+│   │       ├── frame_transform_node.py
+│   │       ├── pose_transform_test.py
+│   │       ├── motion_client.py
+│   │       ├── gripper_client.py
+│   │       ├── interaction_node.py
+│   │       ├── state_machine.py
+│   │       └── __pycache__/
 │   ├── ur3e_motion_mtc/       # Motion planning (MoveIt2 Task Constructor)
+│   │   ├── CMakeLists.txt
+│   │   ├── README.md
+│   │   ├── README.pdf
+│   │   ├── package.xml
+│   │   ├── launch/
+│   │   │   └── ur3e_motion_mtc.launch.py
+│   │   └── src/
+│   │       └── ur3e_motion_mtc.cpp
 │   └── voice_interface/       # Voice & keyboard command interface
-│       ├── voice_interface/
-│       │   ├── voice_input_node.py
-│       │   ├── command_parser_node.py
-│       │   ├── system_command_listener.py
-│       │   └── reset_executor_node.py
-│       └── package.xml
+│       ├── package.xml
+│       └── voice_interface/
+│           ├── voice_input_node.py
+│           ├── command_parser_node.py
+│           ├── system_command_listener.py
+│           └── reset_executor_node.py
 ├── .gitignore
 └── README.md
 ```
@@ -1161,17 +1207,18 @@ On receiving valid pose data the node executes this sequence on the UR3e:
 
 ```
 1.  Open gripper
-2.  Move arm to above-brick position        (sampling planner)
-3.  Descend toward brick                    (Cartesian planner, downward -Z)
-4.  Close gripper around brick
-5.  Attach brick to gripper in scene
-6.  Lift brick upward                       (Cartesian planner, upward +Z)
-7.  Move arm to above-target position       (sampling planner)
-8.  Lower to place position                 (Cartesian planner)
-9.  Open gripper
-10. Detach brick from gripper in scene
-11. Retreat upward                          (Cartesian planner, upward +Z)
-12. Return arm to camera_home configuration (sampling planner)
+2.  Move arm to `camera_home`               (sampling planner)
+3.  Move arm to above-brick position        (sampling planner, Connect stage)
+4.  Descend toward brick                    (Cartesian planner, downward -Z)
+5.  Close gripper around brick
+6.  Attach brick to gripper in scene
+7.  Lift brick upward                       (Cartesian planner, upward +Z)
+8.  Move arm to above-target position       (sampling planner, Connect stage)
+9.  Lower to place position                 (Cartesian planner, downward -Z)
+10. Open gripper
+11. Detach brick from gripper in scene
+12. Retreat upward                          (Cartesian planner, upward +Z)
+13. Return arm to `camera_home`             (sampling planner)
 ```
 
 ---
@@ -1270,35 +1317,74 @@ All parameters are set directly in `src/ur3e_motion_mtc.cpp`:
 
 | Parameter | Location in code | Default | Description |
 |---|---|---|---|
-| Approach min/max distance | `approach object` stage | `0.0 / 0.20 m` | Vertical descent range before grasping |
-| Lift min/max distance | `lift object` stage | `0.0 / 0.20 m` | Vertical lift range after grasping |
-| Retreat min/max distance | `retreat` stage | `0.0 / 0.20 m` | Vertical retreat range after placing |
-| `move to pick` timeout | `stage_move_to_pick` | `15.0 s` | Max planning time to reach above the brick |
-| `move to place` timeout | `stage_move_to_place` | `15.0 s` | Max planning time to reach above the place position |
+| **Planning Control** | | | |
+| `PATH_COST_THRESHOLD` | `doTask()` | `30.0` | Maximum allowed path cost; planning retries if above this threshold |
+| `MAX_PLANNING_ATTEMPTS` | `doTask()` | `20` | Number of full-task planning attempts before giving up |
+| **Cartesian Motion Ranges** | | | |
+| Approach min/max distance | `approach object` stage | `0.03 / 0.10 m` | Vertical descent range before grasping |
+| Lift min/max distance | `lift object` stage | `0.03 / 0.10 m` | Vertical lift range after grasping |
+| Retreat min/max distance | `retreat` stage | `0.03 / 0.10 m` | Vertical retreat range after placing |
+| **Stage Timeouts** | | | |
+| `move to pick` timeout | `stage_move_to_pick` | `5.0 s` | Max planning time to reach above the brick |
+| `move to place` timeout | `stage_move_to_place` | `5.0 s` | Max planning time to reach above the place position |
+| **Inverse Kinematics** | | | |
 | Max IK solutions (grasp) | `ComputeIK` grasp wrapper | `16` | IK solutions explored for grasp pose |
-| Max IK solutions (place) | `ComputeIK` place wrapper | `8` | IK solutions explored for place pose |
-| `task_.plan()` count | `doTask()` | `10` | Number of full task solutions to find before executing |
-| Velocity scaling | `cartesian_planner` | `0.5` | Fraction of max joint velocity for Cartesian stages |
-| Acceleration scaling | `cartesian_planner` | `0.5` | Fraction of max joint acceleration for Cartesian stages |
+| Min solution distance (grasp) | `ComputeIK` grasp wrapper | `0.5` | Min distance (rad) between consecutive grasp IK solutions |
+| Max IK solutions (place) | `ComputeIK` place wrapper | `16` | IK solutions explored for place pose |
+| Min solution distance (place) | `ComputeIK` place wrapper | `1.0` | Min distance (rad) between consecutive place IK solutions |
+| **Velocity & Acceleration** | | | |
+| Velocity scaling (sampling) | `sampling_planner` | `0.2` | Fraction of max joint velocity for sampling planner |
+| Velocity scaling (Cartesian) | `cartesian_planner` | `0.2` | Fraction of max joint velocity for Cartesian stages |
+| Acceleration scaling (sampling) | `sampling_planner` | `0.2` | Fraction of max joint acceleration for sampling planner |
+| Acceleration scaling (Cartesian) | `cartesian_planner` | `0.2` | Fraction of max joint acceleration for Cartesian stages |
+| Cartesian step size | `cartesian_planner` | `0.002 m` | Step size for discretised Cartesian planning |
+| Cartesian jump threshold | `cartesian_planner` | `1.5` | Max allowed joint angle jump between Cartesian waypoints (rad) |
 
 ---
 
 ## Known Limitations and Assumptions
 
-**Assumptions:**
+### Assumptions
 
-- The pose data received from `ordered_pose_array` is in the `world` frame of reference. 
-- The pose data received from `ordered_pose_array` is an array of 12 float values representing the brick's pose and target pose, 6 vales for each. 
-- The node will only receive a single pick-and-place task per motion, and will only receive a new one once returning to the `camera_home` robot configuration.
-- Two brick's will be distances far enough appart that the gripper can pick and place each brick using the brick's long axis.
-- All required controllers have been actived before launching the `motion_node`.
+- `ordered_pose_array` must contain exactly 12 float64 values: `[brick_x, brick_y, brick_z, brick_roll, brick_pitch, brick_yaw, target_x, target_y, target_z, target_roll, target_pitch, target_yaw]`
+- All poses are assumed to be in the `world` frame.
+- The node handles one pick/place task at a time and only starts the next task after returning to `camera_home`.
+- `camera_home`, `open`, and `closed` pose names must exist in the robot's SRDF configuration and MoveIt setup.
+- All required trajectory controllers (`scaled_joint_trajectory_controller`, `finger_width_trajectory_controller`) must be active before launching the node.
+- The arm can always move between `camera_home` and any arbitrary brick/target pose without leaving the workspace.
 
+### Current Limitations
 
-**Known Limitations:**
+**Planning and Execution:**
+- Single-shot planning: `task_.plan(1)` finds only one solution per attempt. No fallback solution selection or retries with modified pose offsets.
+- If planning fails or cost exceeds the threshold, the node logs an error and stops. No higher-level retry strategy or automated recovery.
+- Cost-based filtering: solutions are rejected if path cost exceeds `PATH_COST_THRESHOLD` (30.0), but the threshold is not tuned for the specific environment.
 
-- If planning fails, the node logs an error and exits. It does not retry automatically with different parameters.
-- The workspace does not model the evironment of the actually UR3e. There is no placement board or other bricks, so the robot doesn't avoid collision with the environment yet.
-- Currently, the Cartesian movements only work if the minimum is set to 0m, so they dont retreat or approach the bricks.
+**Collision Modeling:**
+- Minimal scene: only a ground plane + the single picked brick are modeled as collision objects.
+- No static environment obstacles (table edge, board perimeter, other bricks) are added to the planning scene.
+- No dynamic obstacle avoidance; moving objects in the workspace are not detected or modeled.
+- The `Cartesian` motions and controlled gripper width help avoid collisions in practice, but there is no explicit collision-free planning guarantee.
+
+**Grasp and Place Behavior:**
+- `GenerateGraspPose` is constrained to top-down grasps with only two yaw options (0° and 180°), limiting adaptability to unusual brick poses.
+- Place pose is fixed to the target pose from the input message with no adaptive offset or approach direction tuning.
+- Gripper orientation is hardcoded as a 180° rotation around the X-axis (top-down gripper approach).
+
+**Motion Control:**
+- Approach/lift/retreat Cartesian distances are hardcoded per stage and not parameterized at runtime.
+- Velocity and acceleration scaling are uniform across all planners (0.2 max) and cannot be adjusted per stage.
+- Stop/reset handling is coarse: `stop` cancels trajectory goals immediately but does not gracefully pause or rewind task execution state.
+
+**Message Handling:**
+- Incoming `Float64MultiArray` messages must have exactly 12 values; messages of any other size are silently ignored.
+- The main loop waits indefinitely for valid pose data, potentially blocking if no messages arrive.
+- No validation of pose values (e.g., unreachable targets or negative Z) before attempting planning.
+
+**Integration:**
+- No feedback or action-based completion confirmation; the node assumes motion completes after the configured timeout.
+- The interaction node must provide pose data; there is no internal fallback or mock pose generation.
+- Frame-of-reference assumptions: assumes `world` frame ≡ `base_link` (no runtime transform verification).
 
 ---
 
